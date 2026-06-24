@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
+import { useAuth } from '../context/AuthContext';
 
 export const Auth: React.FC = () => {
+  const navigate = useNavigate();
+  const { login } = useAuth();
   const [isLogin, setIsLogin] = useState<boolean>(true);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -25,9 +29,10 @@ export const Auth: React.FC = () => {
     try {
       if (isLogin) {
         // Flux Connexion
-        await authService.login(email, password);
+        const token = await authService.login(email, password);
+        login(token);
         setSuccess("Connexion réussie ! Redirection...");
-        // Logique de redirection ou de mise à jour d'état global ici (ex: window.location.reload())
+        navigate('/home', { replace: true });
       } else {
         // Flux Inscription
         await authService.register(email, password);
