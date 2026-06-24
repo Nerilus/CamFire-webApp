@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon } from '../components/icons';
-import { emergencyContacts } from '../services/mockData';
+import { PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon, TrashIcon } from '../components/icons';
 import { useAuth } from '../context/AuthContext';
+import { contactService, type EmergencyContact } from '../services/contactService';
 import './Settings.css';
 
 type Sensitivity = 'low' | 'medium' | 'high';
@@ -14,6 +14,45 @@ export const Settings: React.FC = () => {
   const [interval, setIntervalValue] = useState(60);
   const [sensitivity, setSensitivity] = useState<Sensitivity>('high');
   const [notifications, setNotifications] = useState(true);
+
+  const [contacts, setContacts] = useState<EmergencyContact[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [newContact, setNewContact] = useState({ name: '', phone: '', role: '' });
+
+  useEffect(() => {
+    loadContacts();
+  }, []);
+
+  const loadContacts = async () => {
+    try {
+      const data = await contactService.getContacts();
+      setContacts(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleAddContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newContact.name || !newContact.phone || !newContact.role) return;
+    try {
+      await contactService.addContact(newContact.name, newContact.phone, newContact.role);
+      setShowModal(false);
+      setNewContact({ name: '', phone: '', role: '' });
+      loadContacts();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteContact = async (id: number) => {
+    try {
+      await contactService.deleteContact(id);
+      loadContacts();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <div className="page">
@@ -79,23 +118,68 @@ export const Settings: React.FC = () => {
       <section className="settings-section">
         <div className="settings-section-header">
           <h2 className="settings-section-title">CONTACTS D'URGENCE</h2>
-          <button className="settings-add">
+          <button className="settings-add" onClick={() => setShowModal(true)}>
             <PlusIcon size={13} /> AJOUTER
           </button>
         </div>
         <div className="contacts-list">
-          {emergencyContacts.map((c) => (
+          {contacts.map((c) => (
             <div className="contact-row" key={c.id}>
-              <div className="contact-avatar">{c.name.charAt(0)}</div>
+              <div className="contact-avatar">{c.name.charAt(0).toUpperCase()}</div>
               <div className="contact-info">
                 <strong>{c.name}</strong>
                 <span>{c.phone}</span>
               </div>
               <span className="contact-role">{c.role}</span>
+              <button className="contact-delete-btn" onClick={() => handleDeleteContact(c.id)}>
+                <TrashIcon size={16} />
+              </button>
             </div>
           ))}
+          {contacts.length === 0 && (
+            <div className="contact-empty">Aucun contact d'urgence configuré.</div>
+          )}
         </div>
       </section>
+
+      {showModal && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <h3>Ajouter un contact d'urgence</h3>
+            <form onSubmit={handleAddContact} className="modal-form">
+              <input
+                type="text"
+                placeholder="Nom complet"
+                value={newContact.name}
+                onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Téléphone (+33 6...)"
+                value={newContact.phone}
+                onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Rôle (Ex: Voisin, Famille)"
+                value={newContact.role}
+                onChange={(e) => setNewContact({ ...newContact, role: e.target.value })}
+                required
+              />
+              <div className="modal-actions">
+                <button type="button" className="btn btn-dark" onClick={() => setShowModal(false)}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn">
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <section className="settings-section">
         <h2 className="settings-section-title">LANGUE</h2>

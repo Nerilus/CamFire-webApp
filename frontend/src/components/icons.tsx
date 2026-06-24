@@ -192,3 +192,9 @@ export const XIcon: React.FC<IconProps> = ({ size, className }) => (
     <path d="M6 6l12 12M18 6L6 18" />
   </svg>
 );
+
+export const TrashIcon: React.FC<IconProps> = ({ size, className }) => (
+  <svg {...base(size)} className={className}>
+    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+);
