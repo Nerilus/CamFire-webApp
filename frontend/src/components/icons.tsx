@@ -142,6 +142,13 @@ export const DownloadIcon: React.FC<IconProps> = ({ size, className }) => (
   </svg>
 );
 
+export const UploadIcon: React.FC<IconProps> = ({ size, className }) => (
+  <svg {...base(size)} className={className}>
+    <path d="M12 15V3M7 8l5-5 5 5" />
+    <path d="M5 21h14" />
+  </svg>
+);
+
 export const ShareIcon: React.FC<IconProps> = ({ size, className }) => (
   <svg {...base(size)} className={className}>
     <circle cx="6" cy="12" r="2.2" />

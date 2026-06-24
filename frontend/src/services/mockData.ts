@@ -15,6 +15,7 @@ export const scanHistory: ScanRecord[] = [
   { id: '3', status: 'warn', location: 'Zone Industrielle, Bordeaux', date: '22 juin 2026, 16:47', confidence: 61 },
   { id: '4', status: 'safe', location: 'Centre Ville, Paris', date: '21 juin 2026, 11:20' },
   { id: '5', status: 'fire', location: 'Forêt des Landes, Gironde', date: '19 juin 2026, 22:08', confidence: 99, coords: '44.2167°N 0.9000°W' },
+  { id: '6', status: 'safe', location: 'Quai de la Fosse, Nantes', date: '18 juin 2026, 07:44' },
 ];
 
 export interface EmergencyContact {

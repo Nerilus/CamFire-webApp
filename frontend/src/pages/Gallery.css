@@ -1,0 +1,123 @@
+.gallery-dropzone {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: 1.5px dashed var(--border);
+  border-radius: 14px;
+  padding: 32px 20px;
+  color: var(--text-dim);
+  cursor: pointer;
+  margin-bottom: 28px;
+}
+
+.gallery-dropzone strong {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.gallery-dropzone span {
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.3px;
+}
+
+.gallery-recent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.gallery-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: var(--text-faint);
+}
+
+.gallery-count {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 26px;
+}
+
+.gallery-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gallery-card-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.gallery-card-thumb img,
+.gallery-card-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gallery-card-placeholder {
+  color: var(--text-faint);
+}
+
+.gallery-card-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 9px;
+  padding: 2px 6px;
+}
+
+.gallery-video-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-radius: 6px;
+  padding: 3px;
+  display: flex;
+}
+
+.gallery-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.gallery-card-meta strong {
+  color: #fff;
+  font-weight: 700;
+}
+
+.gallery-card-meta span {
+  color: var(--text-faint);
+}
+
+.gallery-analyze-btn {
+  width: 100%;
+  padding: 16px;
+  font-size: 14px;
+}
