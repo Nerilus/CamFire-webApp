@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { useAuth } from '../context/AuthContext';
 
 export const Auth: React.FC = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const [isLogin, setIsLogin] = useState<boolean>(true);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -13,6 +13,13 @@ export const Auth: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+
+  // Redirection si l'utilisateur est déjà connecté
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/home', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,9 +43,11 @@ export const Auth: React.FC = () => {
       } else {
         // Flux Inscription
         await authService.register(email, password);
-        setSuccess("Compte créé avec succès ! Vous pouvez vous connecter.");
-        setIsLogin(true); // Bascule automatique sur l'écran de login
-        setConfirmPassword('');
+        // Connexion automatique après inscription
+        const token = await authService.login(email, password);
+        login(token);
+        setSuccess("Compte créé avec succès ! Redirection...");
+        navigate('/home', { replace: true });
       }
     } catch (err: any) {
       setError(err.message || 'Une erreur est survenue.');
