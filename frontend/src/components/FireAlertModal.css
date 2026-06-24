@@ -1,0 +1,178 @@
+.fire-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.fire-modal {
+  width: 100%;
+  max-width: 480px;
+  background: linear-gradient(160deg, #d6432b 0%, #9c2515 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 22px 28px;
+  overflow-y: auto;
+  color: #fff;
+}
+
+.fire-modal-top {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.live-alert {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff;
+  animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.fire-modal-close {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+}
+
+.fire-modal-icon {
+  margin-top: 28px;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fire-modal-title {
+  margin-top: 18px;
+  font-size: 34px;
+  font-weight: 900;
+  text-align: center;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+
+.fire-modal-location {
+  margin-top: 24px;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fire-modal-location strong {
+  font-size: 15px;
+}
+
+.fire-modal-location span {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.fire-modal-sent {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fire-modal-evidence {
+  margin-top: 16px;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fire-modal-evidence-thumb {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.fire-modal-evidence-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fire-modal-evidence-date {
+  font-size: 11px;
+  opacity: 0.75;
+  font-weight: 400;
+}
+
+.fire-modal-btn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 15px;
+  margin-top: 12px;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  color: #fff;
+}
+
+.btn-neighbors {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.btn-pompiers {
+  background: #14110f;
+}
+
+.btn-report {
+  background: linear-gradient(135deg, #ff8a00, #ff4500);
+  margin-bottom: 0;
+}
