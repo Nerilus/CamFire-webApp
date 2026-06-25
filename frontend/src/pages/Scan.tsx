@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FlashIcon, RefreshIcon, GalleryIcon, VideoIcon, UploadIcon } from '../components/icons';
+import { FlashIcon, RefreshIcon, GalleryIcon, UploadIcon } from '../components/icons';
 import { FireAlertModal } from '../components/FireAlertModal';
 import { scanHistory } from '../services/mockData';
 import { useMedia } from '../context/MediaContext';
@@ -16,8 +16,6 @@ export const Scan: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
 
   const [facingMode, setFacingMode] = useState<FacingMode>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -25,7 +23,6 @@ export const Scan: React.FC = () => {
   const [fireDetected, setFireDetected] = useState(false);
   const [confidence, setConfidence] = useState<number>(0);
   const [gradcamImage, setGradcamImage] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | Blob | null>(null);
 
@@ -85,7 +82,7 @@ export const Scan: React.FC = () => {
   };
 
   const handleCapturePhoto = async () => {
-    if (analyzing || isRecording) return;
+    if (analyzing) return;
     
     // S'il y a un fichier importé en attente, le bouton sert à l'analyser
     if (selectedFile) {
@@ -137,31 +134,6 @@ export const Scan: React.FC = () => {
     setFireDetected(false);
     setConfidence(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleToggleRecording = () => {
-    const stream = streamRef.current;
-    if (!stream) return;
-
-    if (!isRecording) {
-      chunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        setCapturedUrl(url);
-        addMedia('video', url);
-      };
-      recorder.start();
-      recorderRef.current = recorder;
-      setIsRecording(true);
-    } else {
-      recorderRef.current?.stop();
-      setIsRecording(false);
-    }
   };
 
   return (
@@ -220,9 +192,9 @@ export const Scan: React.FC = () => {
           <p className="scan-hint">ANALYSE EN COURS…</p>
         )}
 
-        <div className={`scan-status-pill ${isRecording ? 'recording' : analyzing ? 'analyzing' : fireDetected ? 'fire-detected' : 'safe'}`}>
+        <div className={`scan-status-pill ${analyzing ? 'analyzing' : fireDetected ? 'fire-detected' : 'safe'}`}>
           <span className="dot" />
-          {isRecording ? 'ENREGISTREMENT…' : analyzing ? 'ANALYSE IA EN COURS…' : fireDetected ? `FEU DÉTECTÉ (${Math.round(confidence * 100)}%)` : 'SÉCURISÉ'}
+          {analyzing ? 'ANALYSE IA EN COURS…' : fireDetected ? `FEU DÉTECTÉ (${Math.round(confidence * 100)}%)` : 'SÉCURISÉ'}
         </div>
       </div>
 
@@ -240,13 +212,13 @@ export const Scan: React.FC = () => {
         <button
           className="scan-shutter"
           onClick={handleCapturePhoto}
-          disabled={analyzing || isRecording || !!cameraError}
+          disabled={analyzing || !!cameraError}
           aria-label="Prendre une photo"
         >
           <span />
         </button>
         <button
-          className={`scan-side-btn${isRecording ? ' active-recording' : ''}`}
+          className="scan-side-btn"
           onClick={() => navigate('/galerie')}
           title="Aller à la galerie"
         >
