@@ -1,10 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { HomeIcon, CameraIcon, ClockIcon, BellIcon, SettingsIcon } from './icons';
+import { HomeIcon, CameraIcon, MapIcon, ClockIcon, BellIcon, SettingsIcon } from './icons';
 
 const items = [
   { to: '/home', label: 'ACCUEIL', Icon: HomeIcon },
   { to: '/scan', label: 'SCAN', Icon: CameraIcon },
+  { to: '/carte', label: 'CARTE', Icon: MapIcon },
   { to: '/historique', label: 'HISTORIQUE', Icon: ClockIcon },
   { to: '/alertes', label: 'ALERTES', Icon: BellIcon },
   { to: '/reglages', label: 'RÉGLAGES', Icon: SettingsIcon },
