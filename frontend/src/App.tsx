@@ -10,7 +10,7 @@ import { Gallery } from './pages/Gallery';
 import { History } from './pages/History';
 import { Alerts } from './pages/Alerts';
 import { Settings } from './pages/Settings';
-import { Profile } from './pages/Profile';
+import { Carte } from './pages/Carte';
 import './styles/app.css';
 
 function App() {
@@ -29,6 +29,7 @@ function App() {
             >
               <Route path="/home" element={<Home />} />
               <Route path="/scan" element={<Scan />} />
+              <Route path="/carte" element={<Carte />} />
               <Route path="/galerie" element={<Gallery />} />
               <Route path="/historique" element={<History />} />
               <Route path="/alertes" element={<Alerts />} />
