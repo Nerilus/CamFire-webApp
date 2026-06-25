@@ -8,7 +8,7 @@ const items = [
   { to: '/carte', label: 'CARTE', Icon: MapIcon },
   { to: '/historique', label: 'HISTORIQUE', Icon: ClockIcon },
   { to: '/alertes', label: 'ALERTES', Icon: BellIcon },
-  { to: '/reglages', label: 'RÉGLAGES', Icon: SettingsIcon },
+  { to: '/profil', label: 'PROFIL', Icon: UsersIcon },
 ];
 
 export const BottomNav: React.FC = () => (

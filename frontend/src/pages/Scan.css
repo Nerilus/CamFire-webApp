@@ -111,7 +111,20 @@
 
 .scan-status-pill.analyzing .dot {
   background: var(--warn);
+  box-shadow: 0 0 8px var(--warn);
   animation: pulse 1s infinite;
+}
+
+.scan-status-pill.fire-detected {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+.scan-status-pill.fire-detected .dot {
+  background: var(--danger);
+  box-shadow: 0 0 12px var(--danger);
+  animation: pulse 0.5s infinite;
 }
 
 .scan-status-pill.recording .dot {
@@ -177,16 +190,21 @@
 }
 
 .scan-preview-toast {
-  position: fixed;
-  bottom: 100px;
+  position: absolute;
+  bottom: 120px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(15, 15, 18, 0.95);
-  border: 1px solid var(--border);
-  color: #fff;
-  padding: 10px 18px;
-  border-radius: 999px;
-  font-size: 12.5px;
+  background: var(--surface-2);
+  color: var(--safe);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
   font-weight: 600;
-  z-index: 5;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  animation: slideUpFade 0.3s ease-out;
+}
+
+@keyframes slideUpFade {
+  0% { opacity: 0; transform: translate(-50%, 10px); }
+  100% { opacity: 1; transform: translate(-50%, 0); }
 }
