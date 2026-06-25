@@ -6,6 +6,8 @@ import { scanHistory } from '../services/mockData';
 import { useMedia } from '../context/MediaContext';
 import './Scan.css';
 
+import { usePrediction } from '../services/usePrediction';
+
 type FacingMode = 'environment' | 'user';
 
 export const Scan: React.FC = () => {
@@ -23,6 +25,7 @@ export const Scan: React.FC = () => {
   const [fireDetected, setFireDetected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null);
+  const { analyze } = usePrediction();
 
   useEffect(() => {
     let active = true;
@@ -79,11 +82,19 @@ export const Scan: React.FC = () => {
     setCapturedUrl(dataUrl);
     addMedia('photo', dataUrl);
 
+    // setAnalyzing(true);
+    // setTimeout(() => {
+    //   setAnalyzing(false);
+    //   setFireDetected(true);
+    // }, 1400);
     setAnalyzing(true);
-    setTimeout(() => {
-      setAnalyzing(false);
-      setFireDetected(true);
-    }, 1400);
+    canvas.toBlob(async (blob) => {
+    if (!blob) { setAnalyzing(false); return; }
+    const result = await analyze({ file: blob, filename: 'capture.jpg' });
+    setAnalyzing(false);
+    if (result?.isFire) setFireDetected(true);
+      }, 'image/jpeg', 0.9);
+      
   };
 
   const handleToggleRecording = () => {
