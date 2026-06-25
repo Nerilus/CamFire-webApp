@@ -34,6 +34,7 @@ function App() {
               <Route path="/historique" element={<History />} />
               <Route path="/alertes" element={<Alerts />} />
               <Route path="/reglages" element={<Settings />} />
+              <Route path="/profil" element={<Profile />} />
             </Route>
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>

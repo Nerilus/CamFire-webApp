@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FlashIcon, RefreshIcon, GalleryIcon, VideoIcon } from '../components/icons';
+import { FlashIcon, RefreshIcon, GalleryIcon, VideoIcon, UploadIcon } from '../components/icons';
 import { FireAlertModal } from '../components/FireAlertModal';
 import { scanHistory } from '../services/mockData';
 import { useMedia } from '../context/MediaContext';
+import { scanService } from '../services/scanService';
 import './Scan.css';
 
 type FacingMode = 'environment' | 'user';
@@ -13,6 +14,7 @@ export const Scan: React.FC = () => {
   const { addMedia } = useMedia();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -21,8 +23,11 @@ export const Scan: React.FC = () => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [fireDetected, setFireDetected] = useState(false);
+  const [confidence, setConfidence] = useState<number>(0);
+  const [gradcamImage, setGradcamImage] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | Blob | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -60,8 +65,34 @@ export const Scan: React.FC = () => {
     setFacingMode((m) => (m === 'environment' ? 'user' : 'environment'));
   };
 
-  const handleCapturePhoto = () => {
+  const processImageBlob = async (blob: Blob) => {
+    setAnalyzing(true);
+    setGradcamImage(null);
+    try {
+      const result = await scanService.predictImage(blob);
+      setFireDetected(result.fire_detected);
+      setConfidence(result.confidence);
+      if (result.gradcam_base64) {
+        setGradcamImage(result.gradcam_base64);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'analyse IA");
+    } finally {
+      setAnalyzing(false);
+      // On ne réinitialise pas selectedFile pour permettre à l'utilisateur de re-voir l'image
+    }
+  };
+
+  const handleCapturePhoto = async () => {
     if (analyzing || isRecording) return;
+    
+    // S'il y a un fichier importé en attente, le bouton sert à l'analyser
+    if (selectedFile) {
+      await processImageBlob(selectedFile);
+      return;
+    }
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || video.videoWidth === 0) return;
@@ -79,11 +110,33 @@ export const Scan: React.FC = () => {
     setCapturedUrl(dataUrl);
     addMedia('photo', dataUrl);
 
-    setAnalyzing(true);
-    setTimeout(() => {
-      setAnalyzing(false);
-      setFireDetected(true);
-    }, 1400);
+    // Convert to Blob and send to AI
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    setSelectedFile(blob);
+    await processImageBlob(blob);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const url = URL.createObjectURL(file);
+      setCapturedUrl(url);
+      setSelectedFile(file);
+      setGradcamImage(null);
+      setFireDetected(false);
+      setConfidence(0);
+      // L'analyse n'est plus automatique, l'utilisateur doit cliquer sur le bouton (shutter)
+    }
+  };
+
+  const resetScanner = () => {
+    setCapturedUrl(null);
+    setSelectedFile(null);
+    setGradcamImage(null);
+    setFireDetected(false);
+    setConfidence(0);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleToggleRecording = () => {
@@ -124,8 +177,24 @@ export const Scan: React.FC = () => {
       </div>
 
       <div className="scan-viewfinder">
+        {capturedUrl && (
+          <button 
+            onClick={resetScanner}
+            style={{ position: 'absolute', top: '15px', right: '15px', zIndex: 10, background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', color: 'white', width: '36px', height: '36px', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title="Fermer l'image"
+          >
+            ✕
+          </button>
+        )}
+
         {cameraError ? (
           <p className="scan-hint scan-error">{cameraError}</p>
+        ) : capturedUrl ? (
+          <img 
+            src={gradcamImage || capturedUrl} 
+            alt="Preview ou Grad-CAM" 
+            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px' }} 
+          />
         ) : (
           <video
             ref={videoRef}
@@ -141,20 +210,33 @@ export const Scan: React.FC = () => {
         <span className="corner tr" />
         <span className="corner bl" />
         <span className="corner br" />
-        {!cameraError && (
-          <p className="scan-hint">{analyzing ? 'ANALYSE EN COURS…' : 'POINTEZ VERS LA SCÈNE'}</p>
+        {!cameraError && !capturedUrl && (
+          <p className="scan-hint">POINTEZ VERS LA SCÈNE</p>
+        )}
+        {capturedUrl && !analyzing && !fireDetected && confidence === 0 && (
+          <p className="scan-hint">APPUYEZ POUR ANALYSER</p>
+        )}
+        {analyzing && (
+          <p className="scan-hint">ANALYSE EN COURS…</p>
         )}
 
-        <div className={`scan-status-pill ${isRecording ? 'recording' : analyzing ? 'analyzing' : 'safe'}`}>
+        <div className={`scan-status-pill ${isRecording ? 'recording' : analyzing ? 'analyzing' : fireDetected ? 'fire-detected' : 'safe'}`}>
           <span className="dot" />
-          {isRecording ? 'ENREGISTREMENT…' : analyzing ? 'ANALYSE EN COURS' : 'AUCUN FEU DÉTECTÉ'}
+          {isRecording ? 'ENREGISTREMENT…' : analyzing ? 'ANALYSE IA EN COURS…' : fireDetected ? `FEU DÉTECTÉ (${Math.round(confidence * 100)}%)` : 'SÉCURISÉ'}
         </div>
       </div>
 
-      <div className="scan-controls">
-        <button className="scan-side-btn" onClick={() => navigate('/galerie')}>
-          <GalleryIcon size={22} />
+      <div className="scan-controls" style={{ display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center', padding: '20px 0' }}>
+        <button className="scan-side-btn" onClick={() => fileInputRef.current?.click()} title="Importer depuis l'appareil">
+          <UploadIcon size={22} />
         </button>
+        <input 
+          type="file" 
+          accept="image/*" 
+          ref={fileInputRef} 
+          style={{ display: 'none' }} 
+          onChange={handleFileUpload} 
+        />
         <button
           className="scan-shutter"
           onClick={handleCapturePhoto}
@@ -165,11 +247,10 @@ export const Scan: React.FC = () => {
         </button>
         <button
           className={`scan-side-btn${isRecording ? ' active-recording' : ''}`}
-          onClick={handleToggleRecording}
-          disabled={!!cameraError}
-          aria-label={isRecording ? 'Arrêter l’enregistrement' : 'Démarrer l’enregistrement vidéo'}
+          onClick={() => navigate('/galerie')}
+          title="Aller à la galerie"
         >
-          <VideoIcon size={22} />
+          <GalleryIcon size={22} />
         </button>
       </div>
 
@@ -177,7 +258,14 @@ export const Scan: React.FC = () => {
         <div className="scan-preview-toast">Média capturé avec succès</div>
       )}
 
-      {fireDetected && <FireAlertModal record={scanHistory[0]} onClose={() => setFireDetected(false)} />}
+      {fireDetected && (
+        <FireAlertModal 
+          record={scanHistory[0]} 
+          onClose={() => setFireDetected(false)}
+          imageUrl={gradcamImage || capturedUrl}
+          confidence={confidence}
+        />
+      )}
     </div>
   );
 };
