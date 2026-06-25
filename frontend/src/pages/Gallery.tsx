@@ -3,6 +3,7 @@ import { useMedia } from '../context/MediaContext';
 import { FireAlertModal } from '../components/FireAlertModal';
 import { UploadIcon, FlameIcon, VideoIcon } from '../components/icons';
 import { scanHistory, type ScanStatus } from '../services/mockData';
+import { scanService } from '../services/scanService';
 import './Gallery.css';
 
 const statusBadge: Record<ScanStatus, string> = {
@@ -16,21 +17,35 @@ export const Gallery: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [analysisData, setAnalysisData] = useState<{fire_detected: boolean, confidence: number, gradcam_base64?: string | null} | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setSelectedFile(file);
+    setAnalysisData(null);
     const url = URL.createObjectURL(file);
     addMedia(file.type.startsWith('video') ? 'video' : 'photo', url);
     e.target.value = '';
   };
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
+    if (!selectedFile) {
+      alert("Veuillez d'abord importer un fichier !");
+      return;
+    }
     setAnalyzing(true);
-    setTimeout(() => {
+    try {
+      const res = await scanService.predictImage(selectedFile);
+      setAnalysisData(res);
+      setResult(res.fire_detected);
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'analyse par l'IA");
+    } finally {
       setAnalyzing(false);
-      setResult(true);
-    }, 1400);
+    }
   };
 
   const recentCaptures = [
@@ -80,34 +95,58 @@ export const Gallery: React.FC = () => {
       </div>
 
       <div className="gallery-grid">
-        {recentCaptures.map((c) => (
-          <div className="gallery-card" key={c.key}>
-            <div className="gallery-card-thumb">
-              {c.thumb ? (
-                c.isVideo ? <video src={c.thumb} muted playsInline /> : <img src={c.thumb} alt="Capture" />
-              ) : (
-                <FlameIcon size={22} className="gallery-card-placeholder" />
-              )}
-              {c.isVideo && (
-                <span className="gallery-video-badge">
-                  <VideoIcon size={12} />
-                </span>
-              )}
-              <span className={`badge ${c.badgeClass} gallery-card-badge`}>{c.badge}</span>
+        {recentCaptures.map((c, i) => {
+          let thumb = c.thumb;
+          let badge = c.badge;
+          let badgeClass = c.badgeClass;
+
+          // Si c'est le fichier qu'on vient d'analyser (le plus récent)
+          if (i === 0 && analysisData) {
+            if (analysisData.gradcam_base64) thumb = analysisData.gradcam_base64;
+            badge = analysisData.fire_detected ? `DANGER (${Math.round(analysisData.confidence * 100)}%)` : 'SÛR';
+            badgeClass = analysisData.fire_detected ? 'badge-fire' : 'badge-safe';
+          }
+
+          return (
+            <div className="gallery-card" key={c.key} onClick={() => {
+              if (i === 0 && analysisData && analysisData.fire_detected) {
+                setResult(true);
+              }
+            }} style={{ cursor: (i === 0 && analysisData && analysisData.fire_detected) ? 'pointer' : 'default' }}>
+              <div className="gallery-card-thumb">
+                {thumb ? (
+                  c.isVideo ? <video src={thumb} muted playsInline /> : <img src={thumb} alt="Capture" />
+                ) : (
+                  <FlameIcon size={22} className="gallery-card-placeholder" />
+                )}
+                {c.isVideo && (
+                  <span className="gallery-video-badge">
+                    <VideoIcon size={12} />
+                  </span>
+                )}
+                <span className={`badge ${badgeClass} gallery-card-badge`}>{badge}</span>
+              </div>
+              <div className="gallery-card-meta">
+                <strong>{c.time}</strong>
+                <span>{c.location}</span>
+              </div>
             </div>
-            <div className="gallery-card-meta">
-              <strong>{c.time}</strong>
-              <span>{c.location}</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button className="btn btn-flame gallery-analyze-btn" onClick={handleAnalyze} disabled={analyzing}>
         {analyzing ? 'ANALYSE EN COURS…' : 'ANALYSER'}
       </button>
 
-      {result && <FireAlertModal record={scanHistory[0]} onClose={() => setResult(false)} />}
+      {result && (
+        <FireAlertModal 
+          record={scanHistory[0]} 
+          onClose={() => setResult(false)} 
+          imageUrl={analysisData?.gradcam_base64 || null}
+          confidence={analysisData?.confidence}
+        />
+      )}
     </div>
   );
 };
