@@ -10,6 +10,7 @@ import { Gallery } from './pages/Gallery';
 import { History } from './pages/History';
 import { Alerts } from './pages/Alerts';
 import { Settings } from './pages/Settings';
+import { Profile } from './pages/Profile';
 import './styles/app.css';
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
               <Route path="/historique" element={<History />} />
               <Route path="/alertes" element={<Alerts />} />
               <Route path="/reglages" element={<Settings />} />
+              <Route path="/profil" element={<Profile />} />
             </Route>
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>

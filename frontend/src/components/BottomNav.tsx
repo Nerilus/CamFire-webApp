@@ -1,13 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { HomeIcon, CameraIcon, ClockIcon, BellIcon, SettingsIcon } from './icons';
+import { HomeIcon, CameraIcon, ClockIcon, BellIcon, UsersIcon } from './icons';
 
 const items = [
   { to: '/home', label: 'ACCUEIL', Icon: HomeIcon },
   { to: '/scan', label: 'SCAN', Icon: CameraIcon },
   { to: '/historique', label: 'HISTORIQUE', Icon: ClockIcon },
   { to: '/alertes', label: 'ALERTES', Icon: BellIcon },
-  { to: '/reglages', label: 'RÉGLAGES', Icon: SettingsIcon },
+  { to: '/profil', label: 'PROFIL', Icon: UsersIcon },
 ];
 
 export const BottomNav: React.FC = () => (

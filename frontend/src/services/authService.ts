@@ -70,5 +70,53 @@ export const authService = {
 
   logout(): void {
     localStorage.removeItem('token');
+  },
+
+  /**
+   * Mise à jour du profil (prénom, nom)
+   */
+  async updateProfile(firstname: string, lastname: string) {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Aucun jeton trouvé');
+
+    const response = await fetch(`${API_URL}/auth/me`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ firstname, lastname }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Erreur lors de la mise à jour du profil');
+    }
+
+    return await response.json();
+  },
+
+  /**
+   * Mise à jour du mot de passe
+   */
+  async updatePassword(currentPassword: string, newPassword: string) {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Aucun jeton trouvé');
+
+    const response = await fetch(`${API_URL}/auth/me/password`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Erreur lors du changement de mot de passe');
+    }
+
+    return await response.json();
   }
 };
