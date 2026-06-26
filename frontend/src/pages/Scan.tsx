@@ -19,6 +19,8 @@ export const Scan: React.FC = () => {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const [facingMode, setFacingMode] = useState<FacingMode>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -26,6 +28,7 @@ export const Scan: React.FC = () => {
   const [confidence, setConfidence] = useState<number>(0);
   const [gradcamImage, setGradcamImage] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | Blob | null>(null);
 
@@ -157,9 +160,15 @@ export const Scan: React.FC = () => {
       };
       recorder.start();
       recorderRef.current = recorder;
+      setRecordingSeconds(0);
+      timerRef.current = setInterval(() => {
+        setRecordingSeconds((s) => s + 1);
+      }, 1000);
       setIsRecording(true);
     } else {
       recorderRef.current?.stop();
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRecordingSeconds(0);
       setIsRecording(false);
     }
   };
@@ -220,7 +229,14 @@ export const Scan: React.FC = () => {
           <p className="scan-hint">ANALYSE EN COURS…</p>
         )}
 
-        <div className={`scan-status-pill ${isRecording ? 'recording' : analyzing ? 'analyzing' : fireDetected ? 'fire-detected' : 'safe'}`}>
+        {isRecording && (
+          <div className="scan-timer">
+            <span className="scan-timer-dot" />
+            {String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:{String(recordingSeconds % 60).padStart(2, '0')}
+          </div>
+        )}
+
+        <div className={`scan-status-pill ${isRecording ? 'recording' : analyzing ? 'analyzing' : 'safe'}`}>
           <span className="dot" />
           {isRecording ? 'ENREGISTREMENT…' : analyzing ? 'ANALYSE IA EN COURS…' : fireDetected ? `FEU DÉTECTÉ (${Math.round(confidence * 100)}%)` : 'SÉCURISÉ'}
         </div>
