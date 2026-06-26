@@ -26,6 +26,116 @@
   letter-spacing: 0.3px;
 }
 
+.gallery-dropzone.drag-over {
+  border-color: var(--flame-start);
+  background: rgba(255, 69, 0, 0.08);
+  color: var(--flame-end);
+}
+
+.gallery-dropzone.drag-over strong {
+  color: var(--flame-end);
+}
+
+.gallery-preview-card {
+  position: relative;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  padding: 14px;
+  margin-bottom: 28px;
+  transition: border-color 0.25s;
+}
+
+.gallery-preview-card.is-analyzing {
+  border-color: var(--flame-start);
+}
+
+.gallery-preview-card.is-danger {
+  border-color: var(--danger);
+}
+
+.gallery-preview-card.is-safe {
+  border-color: var(--safe);
+}
+
+.gallery-preview-remove {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.gallery-preview-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+}
+
+.gallery-preview-media img,
+.gallery-preview-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gallery-scan-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 2px rgba(255, 69, 0, 0.5);
+}
+
+.gallery-scan-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255, 140, 0, 0) 0%, rgba(255, 140, 0, 0.35) 50%, rgba(255, 69, 0, 0) 100%);
+  animation: scan-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes scan-sweep {
+  0% { top: -40%; }
+  100% { top: 100%; }
+}
+
+.gallery-preview-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.gallery-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--flame-end);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .gallery-recent-header {
   display: flex;
   align-items: center;
