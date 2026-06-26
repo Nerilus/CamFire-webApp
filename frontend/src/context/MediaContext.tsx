@@ -4,12 +4,13 @@ export interface MediaItem {
   id: string;
   type: 'photo' | 'video';
   url: string;
+  file?: Blob;
   createdAt: string;
 }
 
 interface MediaContextValue {
   items: MediaItem[];
-  addMedia: (type: MediaItem['type'], url: string) => void;
+  addMedia: (type: MediaItem['type'], url: string, file?: Blob) => void;
 }
 
 const MediaContext = createContext<MediaContextValue | undefined>(undefined);
@@ -17,9 +18,9 @@ const MediaContext = createContext<MediaContextValue | undefined>(undefined);
 export const MediaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<MediaItem[]>([]);
 
-  const addMedia = useCallback((type: MediaItem['type'], url: string) => {
+  const addMedia = useCallback((type: MediaItem['type'], url: string, file?: Blob) => {
     setItems((prev) => [
-      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, type, url, createdAt: new Date().toISOString() },
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, type, url, file, createdAt: new Date().toISOString() },
       ...prev,
     ]);
   }, []);
