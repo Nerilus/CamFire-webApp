@@ -5,7 +5,7 @@ import jwt
 
 from db.database import get_db
 from db.models import User
-from schemas.user_schema import UserCreate, UserResponse, Token
+from schemas.user_schema import UserCreate, UserResponse, Token, UserUpdate, PasswordUpdate
 from core.security import verify_password, get_password_hash, create_access_token
 from core.config import SECRET_KEY, ALGORITHM
 
@@ -68,3 +68,28 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def auth_me(current_user: User = Depends(get_current_user)):
     """Renvoie les données de l'utilisateur actuellement authentifié"""
     return current_user
+
+@router.put("/me", response_model=UserResponse)
+def update_user_profile(user_update: UserUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Met à jour le prénom et le nom de l'utilisateur"""
+    if user_update.firstname is not None:
+        current_user.firstname = user_update.firstname
+    if user_update.lastname is not None:
+        current_user.lastname = user_update.lastname
+    
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+@router.put("/me/password", response_model=dict)
+def update_user_password(password_update: PasswordUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Met à jour le mot de passe de l'utilisateur"""
+    if not verify_password(password_update.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="L'ancien mot de passe est incorrect"
+        )
+    
+    current_user.hashed_password = get_password_hash(password_update.new_password)
+    db.commit()
+    return {"message": "Mot de passe mis à jour avec succès"}
