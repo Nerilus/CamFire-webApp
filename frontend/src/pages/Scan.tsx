@@ -17,6 +17,8 @@ export const Scan: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const [facingMode, setFacingMode] = useState<FacingMode>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
