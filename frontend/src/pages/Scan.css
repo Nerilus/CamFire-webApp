@@ -176,6 +176,34 @@
   color: #fff;
 }
 
+.scan-timer {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 60, 60, 0.5);
+  border-radius: 999px;
+  padding: 5px 14px;
+  color: #ff3c3c;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  z-index: 4;
+}
+
+.scan-timer-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff3c3c;
+  animation: pulse 1s infinite;
+}
+
 .scan-preview-toast {
   position: fixed;
   bottom: 100px;
