@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { HomeIcon, CameraIcon, MapIcon, ClockIcon, BellIcon, SettingsIcon } from './icons';
+import { HomeIcon, CameraIcon, MapIcon, ClockIcon, BellIcon, UsersIcon } from './icons';
 
 const items = [
   { to: '/home', label: 'ACCUEIL', Icon: HomeIcon },
