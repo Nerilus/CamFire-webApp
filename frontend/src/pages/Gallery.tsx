@@ -1,37 +1,55 @@
 import React, { useRef, useState } from 'react';
-import { useMedia } from '../context/MediaContext';
+import { useMedia, hashFile } from '../context/MediaContext';
 import { FireAlertModal } from '../components/FireAlertModal';
-import { UploadIcon, FlameIcon, VideoIcon, XIcon, CheckCircleIcon, WarningIcon } from '../components/icons';
-import { scanHistory, type ScanStatus } from '../services/mockData';
+import { UploadIcon, FlameIcon, VideoIcon, XIcon, CheckCircleIcon, WarningIcon, ClockIcon } from '../components/icons';
+import { scanHistory } from '../services/mockData';
 import { scanService } from '../services/scanService';
 import './Gallery.css';
 
-const statusBadge: Record<ScanStatus, string> = {
-  fire: 'DANGER',
-  safe: 'SÛR',
-  warn: 'ALERTE',
-};
-
 export const Gallery: React.FC = () => {
-  const { items, addMedia } = useMedia();
+  const { items, addMedia, updateMediaStatus, removeMedia } = useMedia();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [currentMediaId, setCurrentMediaId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewType, setPreviewType] = useState<'photo' | 'video' | null>(null);
   const [analysisData, setAnalysisData] = useState<{ fire_detected: boolean, confidence: number, gradcam_base64?: string | null } | null>(null);
+  const [alreadyAnalyzed, setAlreadyAnalyzed] = useState(false);
+  const [alertImage, setAlertImage] = useState<{ url: string; confidence?: number } | null>(null);
 
   const mediaLabel = previewType === 'video' ? 'vidéo' : 'photo';
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     setSelectedFile(file);
-    setAnalysisData(null);
+    setPreviewType(file.type.startsWith('video') ? 'video' : 'photo');
+
+    const id = await hashFile(file);
+    const existing = items.find((m) => m.id === id);
+
+    if (existing) {
+      // Même contenu d'image déjà présent (quelle que soit la méthode d'import) :
+      // on réutilise son entrée sans la déplacer ni la dupliquer.
+      setPreviewUrl(existing.url);
+      setCurrentMediaId(existing.id);
+      if (existing.status !== 'pending') {
+        setAnalysisData({ fire_detected: existing.status === 'fire', confidence: existing.confidence ?? 0 });
+        setAlreadyAnalyzed(true);
+      } else {
+        setAnalysisData(null);
+        setAlreadyAnalyzed(false);
+      }
+      return;
+    }
+
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
-    setPreviewType(file.type.startsWith('video') ? 'video' : 'photo');
-    addMedia(file.type.startsWith('video') ? 'video' : 'photo', url, file);
+    setAnalysisData(null);
+    setAlreadyAnalyzed(false);
+    const newId = addMedia(file.type.startsWith('video') ? 'video' : 'photo', url, file, id);
+    setCurrentMediaId(newId);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -60,15 +78,18 @@ export const Gallery: React.FC = () => {
 
   const handleRemovePreview = () => {
     setSelectedFile(null);
+    setCurrentMediaId(null);
     setPreviewUrl(null);
     setPreviewType(null);
     setAnalysisData(null);
+    setAlreadyAnalyzed(false);
   };
 
   const handleAnalyze = async () => {
     // Si l'état local a été perdu (ex: changement de page puis retour),
     // on retombe sur le dernier média importé conservé dans le contexte partagé.
     const fileToAnalyze = selectedFile ?? items[0]?.file ?? null;
+    const mediaId = currentMediaId ?? items[0]?.id ?? null;
     if (!fileToAnalyze) {
       alert("Veuillez d'abord importer une photo ou une vidéo !");
       return;
@@ -78,6 +99,7 @@ export const Gallery: React.FC = () => {
       const res = await scanService.predictImage(fileToAnalyze);
       setAnalysisData(res);
       setResult(res.fire_detected);
+      if (mediaId) updateMediaStatus(mediaId, res.fire_detected ? 'fire' : 'safe', res.confidence);
     } catch (err) {
       console.error(err);
       alert("Erreur lors de l'analyse par l'IA");
@@ -86,26 +108,26 @@ export const Gallery: React.FC = () => {
     }
   };
 
-  const recentCaptures = [
-    ...items.map((m) => ({
-      key: m.id,
-      thumb: m.url,
-      isVideo: m.type === 'video',
-      badge: 'EN ATTENTE',
-      badgeClass: 'badge-warn',
-      time: new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-      location: 'Nouvelle capture',
-    })),
-    ...scanHistory.map((r) => ({
-      key: r.id,
-      thumb: null,
-      isVideo: false,
-      badge: statusBadge[r.status],
-      badgeClass: `badge-${r.status === 'fire' ? 'fire' : r.status === 'safe' ? 'safe' : 'warn'}`,
-      time: r.date.split(', ')[1] ?? r.date,
-      location: r.location.split(',').pop()?.trim() ?? r.location,
-    })),
-  ].slice(0, 6);
+  const recentStatusBadge: Record<string, { label: string; className: string; Icon: React.FC<{ size?: number }> }> = {
+    pending: { label: 'NON ANALYSÉE', className: 'badge-pending', Icon: ClockIcon },
+    fire: { label: 'DANGER', className: 'badge-fire', Icon: WarningIcon },
+    safe: { label: 'SÛR', className: 'badge-safe', Icon: CheckCircleIcon },
+  };
+
+  const recentCaptures = items.map((m) => ({
+    key: m.id,
+    thumb: m.url,
+    isVideo: m.type === 'video',
+    status: m.status,
+    badge: recentStatusBadge[m.status].label,
+    badgeClass: recentStatusBadge[m.status].className,
+    BadgeIcon: recentStatusBadge[m.status].Icon,
+    time: new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+    location: 'Nouvelle capture',
+    removable: true,
+    onRemove: () => removeMedia(m.id),
+    onView: () => setAlertImage({ url: m.url, confidence: m.confidence }),
+  }));
 
   return (
     <div className="page gallery-page">
@@ -174,6 +196,16 @@ export const Gallery: React.FC = () => {
               <span>{previewType === 'video' ? 'Vidéo' : 'Photo'} prête à être analysée</span>
             )}
           </div>
+
+          {alreadyAnalyzed && !analyzing && (
+            <div className="gallery-already-analyzed">
+              <ClockIcon size={13} />
+              <span>Photo déjà analysée, résultat conservé.</span>
+              <button type="button" onClick={() => setAlreadyAnalyzed(false)}>
+                Réanalyser quand même
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -184,7 +216,13 @@ export const Gallery: React.FC = () => {
 
       <div className="gallery-grid">
         {recentCaptures.map((c) => (
-          <div className="gallery-card" key={c.key}>
+          <div
+            className={`gallery-card${c.status === 'fire' ? ' gallery-card-clickable' : ''}`}
+            key={c.key}
+            onClick={c.status === 'fire' ? c.onView : undefined}
+            role={c.status === 'fire' ? 'button' : undefined}
+            tabIndex={c.status === 'fire' ? 0 : undefined}
+          >
             <div className="gallery-card-thumb">
               {c.thumb ? (
                 c.isVideo ? <video src={c.thumb} muted playsInline /> : <img src={c.thumb} alt="Capture" />
@@ -196,8 +234,20 @@ export const Gallery: React.FC = () => {
                   <VideoIcon size={12} />
                 </span>
               )}
-              <span className={`badge ${c.badgeClass} gallery-card-badge`}>{c.badge}</span>
+              {c.removable && (
+                <button
+                  className="gallery-card-remove"
+                  onClick={(e) => { e.stopPropagation(); c.onRemove(); }}
+                  aria-label="Supprimer la capture"
+                >
+                  <XIcon size={12} />
+                </button>
+              )}
             </div>
+            <span className={`badge ${c.badgeClass} gallery-card-badge`}>
+              <c.BadgeIcon size={11} />
+              {c.badge}
+            </span>
             <div className="gallery-card-meta">
               <strong>{c.time}</strong>
               <span>{c.location}</span>
@@ -206,16 +256,20 @@ export const Gallery: React.FC = () => {
         ))}
       </div>
 
-      <button className="btn btn-flame gallery-analyze-btn" onClick={handleAnalyze} disabled={analyzing || !previewUrl}>
-        {analyzing ? 'ANALYSE EN COURS…' : `ANALYSER LA ${previewType === 'video' ? 'VIDÉO' : 'PHOTO'}`}
+      <button className="btn btn-flame gallery-analyze-btn" onClick={handleAnalyze} disabled={analyzing || !previewUrl || alreadyAnalyzed}>
+        {analyzing
+          ? 'ANALYSE EN COURS…'
+          : alreadyAnalyzed
+            ? 'DÉJÀ ANALYSÉE'
+            : `ANALYSER LA ${previewType === 'video' ? 'VIDÉO' : 'PHOTO'}`}
       </button>
 
-      {result && (
+      {(result || alertImage) && (
         <FireAlertModal
           record={scanHistory[0]}
-          onClose={() => setResult(false)}
-          imageUrl={analysisData?.gradcam_base64 || null}
-          confidence={analysisData?.confidence}
+          onClose={() => { setResult(false); setAlertImage(null); }}
+          imageUrl={(alertImage ? alertImage.url : analysisData?.gradcam_base64) || null}
+          confidence={alertImage ? alertImage.confidence : analysisData?.confidence}
         />
       )}
     </div>
