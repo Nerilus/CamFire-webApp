@@ -1,26 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NearbyAlertBanner } from '../components/NearbyAlertBanner';
-import { FlameIcon } from '../components/icons';
+import { CheckCircleIcon, FlameIcon, ClockIcon, UsersIcon, ChevronRightIcon, MapIcon } from '../components/icons';
+import { scanHistory, emergencyContacts, cameras, type ScanStatus } from '../services/mockData';
 import './Home.css';
 
-const SCAN_INTERVAL = 60;
+const statusMeta: Record<ScanStatus, { label: string; className: string; borderClass: string }> = {
+  fire: { label: 'DANGER', className: 'badge-fire', borderClass: 'accent-danger' },
+  safe: { label: 'SÛR', className: 'badge-safe', borderClass: 'accent-safe' },
+  warn: { label: 'ALERTE', className: 'badge-warn', borderClass: 'accent-warn' },
+};
+
+const cameraDotColor: Record<'safe' | 'warn' | 'fire', string> = {
+  safe: 'var(--safe)',
+  warn: 'var(--warn)',
+  fire: 'var(--danger)',
+};
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const [showAlert, setShowAlert] = useState(true);
-  const [secondsLeft, setSecondsLeft] = useState(SCAN_INTERVAL - 36);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSecondsLeft((s) => (s <= 1 ? SCAN_INTERVAL : s - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const progress = secondsLeft / SCAN_INTERVAL;
-  const radius = 54;
-  const circumference = 2 * Math.PI * radius;
+  const incidentsCount = scanHistory.filter((r) => r.status === 'fire').length;
+  const recentScans = scanHistory.slice(0, 3);
 
   return (
     <div className="home-page">
@@ -40,47 +42,82 @@ export const Home: React.FC = () => {
               <span className="status-text">SURVEILLANCE ACTIVE</span>
             </div>
           </div>
-          <div className="last-scan">
-            <span className="last-scan-label">DERNIER SCAN</span>
-            <span className="last-scan-value">il y a 2 min · Sûr</span>
-          </div>
         </div>
 
-        <div className="scan-now-wrap">
-          <button className="scan-now-btn" onClick={() => navigate('/scan')}>
-            <FlameIcon size={48} />
-            <span>SCANNER</span>
+        <div className="home-hero">
+          <div className="home-hero-icon">
+            <CheckCircleIcon size={28} />
+          </div>
+          <div className="home-hero-text">
+            <strong>Aucun danger détecté</strong>
+            <span>Dernier scan il y a 2 min</span>
+          </div>
+          <button className="btn home-hero-btn" onClick={() => navigate('/scan')}>
+            Scanner
           </button>
         </div>
 
-        <div className="countdown-wrap">
-          <svg width="130" height="130" viewBox="0 0 130 130">
-            <circle cx="65" cy="65" r={radius} stroke="#1f1f27" strokeWidth="8" fill="none" />
-            <circle
-              cx="65"
-              cy="65"
-              r={radius}
-              stroke="url(#grad)"
-              strokeWidth="8"
-              fill="none"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={circumference * (1 - progress)}
-              transform="rotate(-90 65 65)"
-            />
-            <defs>
-              <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ff4500" />
-                <stop offset="100%" stopColor="#ff8c00" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <div className="countdown-center">
-            <span className="countdown-value">{secondsLeft}</span>
-            <span className="countdown-unit">SEC</span>
+        <div className="home-stats">
+          <div className="home-stat-card accent-danger">
+            <div className="home-stat-icon"><FlameIcon size={18} /></div>
+            <strong>{incidentsCount}</strong>
+            <span>Incidents</span>
+          </div>
+          <div className="home-stat-card accent-info">
+            <div className="home-stat-icon"><ClockIcon size={18} /></div>
+            <strong>{scanHistory.length}</strong>
+            <span>Scans</span>
+          </div>
+          <div className="home-stat-card accent-violet">
+            <div className="home-stat-icon"><UsersIcon size={18} /></div>
+            <strong>{emergencyContacts.length}</strong>
+            <span>Contacts</span>
           </div>
         </div>
-        <p className="countdown-label">PROCHAIN SCAN AUTOMATIQUE</p>
+
+        <button className="home-map-preview" onClick={() => navigate('/carte')}>
+          <div className="home-map-preview-canvas">
+            {cameras.map((cam) => (
+              <span
+                key={cam.id}
+                className="home-map-dot"
+                style={{ left: `${cam.x}%`, top: `${cam.y}%`, background: cameraDotColor[cam.status] }}
+              />
+            ))}
+          </div>
+          <div className="home-map-preview-info">
+            <div className="home-map-preview-icon"><MapIcon size={16} /></div>
+            <div className="home-map-preview-text">
+              <strong>Réseau de surveillance</strong>
+              <span>{cameras.length} caméras actives</span>
+            </div>
+            <ChevronRightIcon size={16} />
+          </div>
+        </button>
+
+        <div className="home-section-header">
+          <span className="home-section-title">ACTIVITÉ RÉCENTE</span>
+          <button className="home-see-all" onClick={() => navigate('/historique')}>
+            Tout voir
+            <ChevronRightIcon size={14} />
+          </button>
+        </div>
+
+        <div className="home-activity-list">
+          {recentScans.map((r) => (
+            <button
+              className={`home-activity-item ${statusMeta[r.status].borderClass}`}
+              key={r.id}
+              onClick={() => navigate('/historique')}
+            >
+              <div className="home-activity-info">
+                <strong>{r.location}</strong>
+                <span>{r.date}</span>
+              </div>
+              <span className={`badge ${statusMeta[r.status].className}`}>{statusMeta[r.status].label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
