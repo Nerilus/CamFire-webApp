@@ -11,6 +11,7 @@ import { History } from './pages/History';
 import { Alerts } from './pages/Alerts';
 import { Settings } from './pages/Settings';
 import { Carte } from './pages/Carte';
+import { Profile } from './pages/Profile';
 import './styles/app.css';
 
 function App() {
