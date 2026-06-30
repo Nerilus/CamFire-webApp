@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { FlameIcon, WarningIcon, CheckCircleIcon, XIcon, RefreshIcon } from '../components/icons';
+import { fetchZonesWeather } from '../services/weatherService';
+import { WindOverlay } from '../components/WindOverlay';
 import './Carte.css';
 
 interface Camera {
@@ -12,6 +14,9 @@ interface Camera {
   temp: number;
   risk: number;
   battery: number;
+  wind?: number;
+  wind_direction?: number;
+  humidity?: number;
   coords: string;
   lat: number;
   lng: number;
@@ -83,17 +88,30 @@ const initialCameras: Camera[] = [
 ];
 
 // Custom icons
-const createIcon = (status: 'safe' | 'warn' | 'fire', isSelected: boolean) => {
+const createIcon = (status: 'safe' | 'warn' | 'fire', isSelected: boolean, windDirection?: number) => {
   const color = status === 'fire' ? '#ff3300' : status === 'warn' ? '#ffaa00' : '#00cc66';
   const size = isSelected ? 24 : 16;
   const pulseHtml = isSelected && status === 'fire' 
     ? `<div style="position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid ${color}; animation: pulse-ring 1.2s infinite;"></div>` 
     : '';
   
+  // Arrow pointing in the wind direction
+  // The arrow represents where the wind is going. If direction is 90 (East), the arrow should point right.
+  // We use an SVG path of an arrow. By default, it points UP (0 degrees, North).
+  const windHtml = windDirection !== undefined 
+    ? `
+      <div style="position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; margin-top: -20px; margin-left: -20px; transform: rotate(${windDirection}deg); pointer-events: none; z-index: 1;">
+        <svg viewBox="0 0 40 40" width="40" height="40" style="opacity: ${isSelected ? 0.9 : 0.6}">
+          <path d="M20 4 L20 20 M20 4 L14 10 M20 4 L26 10" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        </svg>
+      </div>
+    ` : '';
+  
   return L.divIcon({
     className: 'custom-leaflet-icon',
     html: `
       ${pulseHtml}
+      ${windHtml}
       <div style="width: ${size}px; height: ${size}px; background-color: ${color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px ${color}; position: relative; z-index: 2; transition: all 0.3s ease;"></div>
     `,
     iconSize: [size, size],
@@ -114,25 +132,61 @@ export const Carte: React.FC = () => {
   const [cameras, setCameras] = useState<Camera[]>(initialCameras);
   const [selectedCamId, setSelectedCamId] = useState<string | null>('cam-1');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showWind, setShowWind] = useState(true);
+
+  useEffect(() => {
+    const loadWeather = async () => {
+      const weatherData = await fetchZonesWeather();
+      if (weatherData && weatherData.length > 0) {
+        setCameras(prev => prev.map(cam => {
+          const w = weatherData.find(d => d.id === cam.id);
+          if (w) {
+            return {
+              ...cam,
+              temp: w.temperature,
+              risk: w.risk_percentage,
+              status: w.status,
+              wind: w.wind_speed,
+              wind_direction: w.wind_direction,
+              humidity: w.humidity,
+              lastUpdate: "À l'instant"
+            };
+          }
+          return cam;
+        }));
+      }
+    };
+    loadWeather();
+  }, []);
 
   const selectedCam = cameras.find((c) => c.id === selectedCamId);
 
-  const handleRefresh = () => {
+  // Calculate average wind metrics to drive the global WindOverlay
+  const avgWindSpeed = cameras.reduce((sum, cam) => sum + (cam.wind || 0), 0) / (cameras.length || 1);
+  const avgWindDir = cameras.reduce((sum, cam) => sum + (cam.wind_direction || 0), 0) / (cameras.length || 1);
+
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setCameras((prev) =>
-        prev.map((c) => {
-          if (c.status === 'fire') {
-            return { ...c, temp: Math.floor(82 + Math.random() * 5), risk: Math.floor(92 + Math.random() * 4) };
-          }
-          if (c.status === 'warn') {
-            return { ...c, temp: Math.floor(39 + Math.random() * 4), risk: Math.floor(58 + Math.random() * 6) };
-          }
-          return { ...c, temp: Math.floor(21 + Math.random() * 4) };
-        })
-      );
-      setIsRefreshing(false);
-    }, 800);
+    const weatherData = await fetchZonesWeather();
+    if (weatherData && weatherData.length > 0) {
+      setCameras(prev => prev.map(cam => {
+        const w = weatherData.find(d => d.id === cam.id);
+        if (w) {
+          return {
+            ...cam,
+            temp: w.temperature,
+            risk: w.risk_percentage,
+            status: w.status,
+            wind: w.wind_speed,
+            wind_direction: w.wind_direction,
+            humidity: w.humidity,
+            lastUpdate: "À l'instant"
+          };
+        }
+        return cam;
+      }));
+    }
+    setIsRefreshing(false);
   };
 
   const getStatusBadge = (status: Camera['status']) => {
@@ -153,16 +207,30 @@ export const Carte: React.FC = () => {
           <h1 className="carte-title">RÉSEAU DE SURVEILLANCE</h1>
           <p className="carte-subtitle">{cameras.length} caméras actives</p>
         </div>
-        <button
-          className={`carte-refresh-btn ${isRefreshing ? 'spinning' : ''}`}
-          onClick={handleRefresh}
-          aria-label="Rafraîchir les caméras"
-        >
-          <RefreshIcon size={20} />
-        </button>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-dim)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              checked={showWind} 
+              onChange={(e) => setShowWind(e.target.checked)} 
+              style={{ accentColor: 'var(--info)' }}
+            />
+            VENT
+          </label>
+          <button
+            className={`carte-refresh-btn ${isRefreshing ? 'spinning' : ''}`}
+            onClick={handleRefresh}
+            aria-label="Rafraîchir les caméras"
+          >
+            <RefreshIcon size={20} />
+          </button>
+        </div>
       </div>
 
       <div className="map-container" style={{ position: 'relative' }}>
+        {showWind && <WindOverlay windDirection={avgWindDir} windSpeed={avgWindSpeed} />}
+        
         <MapContainer 
           center={selectedCam ? [selectedCam.lat, selectedCam.lng] : [46.2276, 2.2137]} 
           zoom={selectedCam ? 11 : 5} 
@@ -198,7 +266,7 @@ export const Carte: React.FC = () => {
                 {/* Camera Node Marker */}
                 <Marker 
                   position={[cam.lat, cam.lng]} 
-                  icon={createIcon(cam.status, isSelected)}
+                  icon={createIcon(cam.status, isSelected, cam.wind_direction)}
                   eventHandlers={{
                     click: () => setSelectedCamId(cam.id),
                   }}
@@ -243,6 +311,8 @@ export const Carte: React.FC = () => {
               )}
               <div className="hud-overlay">
                 <span>TEMP: {selectedCam.temp}°C</span>
+                {selectedCam.wind !== undefined && <span>VENT: {selectedCam.wind}km/h {selectedCam.wind_direction !== undefined ? `(${selectedCam.wind_direction}deg)` : ''}</span>}
+                {selectedCam.humidity !== undefined && <span>HUM: {selectedCam.humidity}%</span>}
                 <span>BATT: {selectedCam.battery}%</span>
               </div>
             </div>

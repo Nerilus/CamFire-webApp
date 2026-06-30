@@ -12,6 +12,7 @@ import { Alerts } from './pages/Alerts';
 import { Settings } from './pages/Settings';
 import { Carte } from './pages/Carte';
 import { Profile } from './pages/Profile';
+import { Analyses } from './pages/Analyses';
 import './styles/app.css';
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
               <Route path="/alertes" element={<Alerts />} />
               <Route path="/reglages" element={<Settings />} />
               <Route path="/profil" element={<Profile />} />
+              <Route path="/analyses" element={<Analyses />} />
             </Route>
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Routes>
