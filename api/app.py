@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from db.database import engine, Base
-from routers import auth, contacts, scan
+from routers import auth, contacts, scan, weather
 
 # Génère les tables si elles n'existent pas encore dans app.db
 Base.metadata.create_all(bind=engine)
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(contacts.router)
 app.include_router(scan.router)
+app.include_router(weather.router)
 
 @app.get("/")
 def read_root():
