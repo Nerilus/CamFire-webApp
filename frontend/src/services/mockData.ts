@@ -18,6 +18,70 @@ export const scanHistory: ScanRecord[] = [
   { id: '6', status: 'safe', location: 'Quai de la Fosse, Nantes', date: '18 juin 2026, 07:44' },
 ];
 
+export interface Camera {
+  id: string;
+  name: string;
+  status: 'safe' | 'warn' | 'fire';
+  temp: number;
+  risk: number;
+  battery: number;
+  coords: string;
+  x: number; // SVG coordinates percent
+  y: number;
+  lastUpdate: string;
+}
+
+export const cameras: Camera[] = [
+  {
+    id: 'cam-1',
+    name: 'Calanques - Sud (Marseille)',
+    status: 'fire',
+    temp: 84,
+    risk: 94,
+    battery: 78,
+    coords: '43.2104°N 5.4382°E',
+    x: 65,
+    y: 72,
+    lastUpdate: 'Il y a 30s',
+  },
+  {
+    id: 'cam-2',
+    name: 'Forêt des Landes - Secteur Nord',
+    status: 'warn',
+    temp: 41,
+    risk: 61,
+    battery: 92,
+    coords: '44.5824°N 0.7452°W',
+    x: 25,
+    y: 40,
+    lastUpdate: 'Il y a 2 min',
+  },
+  {
+    id: 'cam-3',
+    name: 'Massif Sainte-Victoire - Crête',
+    status: 'safe',
+    temp: 24,
+    risk: 4,
+    battery: 99,
+    coords: '43.5312°N 5.5794°E',
+    x: 80,
+    y: 32,
+    lastUpdate: 'Il y a 5 min',
+  },
+  {
+    id: 'cam-4',
+    name: 'Mercantour - Vallée Haute',
+    status: 'safe',
+    temp: 18,
+    risk: 1,
+    battery: 87,
+    coords: '44.1504°N 7.1298°E',
+    x: 48,
+    y: 18,
+    lastUpdate: 'Il y a 8 min',
+  },
+];
+
 export interface EmergencyContact {
   id: string;
   name: string;
