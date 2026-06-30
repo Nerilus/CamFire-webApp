@@ -85,9 +85,44 @@ export const Gallery: React.FC = () => {
     setAlreadyAnalyzed(false);
   };
 
+  const extractFrameFromVideo = (file: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.src = URL.createObjectURL(file);
+      video.muted = true;
+      video.playsInline = true;
+      
+      video.onloadeddata = () => {
+        // Avancer la vidéo à 1 seconde (ou au quart) pour éviter une image noire au tout début
+        video.currentTime = Math.min(1, video.duration * 0.25 || 0);
+      };
+      
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error("Impossible d'extraire l'image"));
+          return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(video.src);
+          if (blob) resolve(blob);
+          else reject(new Error("Erreur de conversion de l'image"));
+        }, 'image/jpeg', 0.9);
+      };
+      
+      video.onerror = () => {
+        URL.revokeObjectURL(video.src);
+        reject(new Error("Erreur lors du chargement de la vidéo"));
+      };
+    });
+  };
+
   const handleAnalyze = async () => {
-    // Si l'état local a été perdu (ex: changement de page puis retour),
-    // on retombe sur le dernier média importé conservé dans le contexte partagé.
     const fileToAnalyze = selectedFile ?? items[0]?.file ?? null;
     const mediaId = currentMediaId ?? items[0]?.id ?? null;
     if (!fileToAnalyze) {
@@ -96,7 +131,14 @@ export const Gallery: React.FC = () => {
     }
     setAnalyzing(true);
     try {
-      const res = await scanService.predictImage(fileToAnalyze);
+      let finalFile: Blob = fileToAnalyze;
+      
+      // Si c'est une vidéo, on extrait une image (frame) pour l'envoyer à l'IA
+      if (fileToAnalyze.type.startsWith('video/')) {
+        finalFile = await extractFrameFromVideo(fileToAnalyze as File);
+      }
+      
+      const res = await scanService.predictImage(finalFile);
       setAnalysisData(res);
       setResult(res.fire_detected);
       if (mediaId) updateMediaStatus(mediaId, res.fire_detected ? 'fire' : 'safe', res.confidence);

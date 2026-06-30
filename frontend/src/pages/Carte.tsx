@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CameraIcon, FlameIcon, WarningIcon, CheckCircleIcon, XIcon, RefreshIcon } from '../components/icons';
+import { MapContainer, TileLayer, Marker, Polygon, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import { FlameIcon, WarningIcon, CheckCircleIcon, XIcon, RefreshIcon } from '../components/icons';
 import './Carte.css';
 
 interface Camera {
@@ -11,61 +13,101 @@ interface Camera {
   risk: number;
   battery: number;
   coords: string;
-  x: number; // SVG coordinates percent
-  y: number;
+  lat: number;
+  lng: number;
+  perimeter: [number, number][];
   lastUpdate: string;
 }
 
 const initialCameras: Camera[] = [
   {
     id: 'cam-1',
-    name: 'Calanques - Sud (Marseille)',
+    name: 'Bois de Vincennes (Paris Est)',
     status: 'fire',
     temp: 84,
     risk: 94,
     battery: 78,
-    coords: '43.2104°N 5.4382°E',
-    x: 65,
-    y: 72,
+    coords: '48.8283°N 2.4330°E',
+    lat: 48.8283,
+    lng: 2.4330,
+    perimeter: [
+      [48.835, 2.420], [48.840, 2.445], [48.832, 2.465], [48.818, 2.455], [48.820, 2.425]
+    ],
     lastUpdate: 'Il y a 30s',
   },
   {
     id: 'cam-2',
-    name: 'Forêt des Landes - Secteur Nord',
+    name: 'Bois de Boulogne (Paris Ouest)',
     status: 'warn',
     temp: 41,
     risk: 61,
     battery: 92,
-    coords: '44.5824°N 0.7452°W',
-    x: 25,
-    y: 40,
+    coords: '48.8624°N 2.2492°E',
+    lat: 48.8624,
+    lng: 2.2492,
+    perimeter: [
+      [48.875, 2.240], [48.878, 2.260], [48.855, 2.265], [48.845, 2.245], [48.855, 2.230]
+    ],
     lastUpdate: 'Il y a 2 min',
   },
   {
     id: 'cam-3',
-    name: 'Massif Sainte-Victoire - Crête',
+    name: 'Forêt de Fontainebleau',
     status: 'safe',
     temp: 24,
     risk: 4,
     battery: 99,
-    coords: '43.5312°N 5.5794°E',
-    x: 80,
-    y: 32,
+    coords: '48.4066°N 2.6685°E',
+    lat: 48.4066,
+    lng: 2.6685,
+    perimeter: [
+      [48.45, 2.60], [48.46, 2.75], [48.35, 2.80], [48.32, 2.65], [48.38, 2.55]
+    ],
     lastUpdate: 'Il y a 5 min',
   },
   {
     id: 'cam-4',
-    name: 'Mercantour - Vallée Haute',
+    name: 'Forêt de Rambouillet',
     status: 'safe',
     temp: 18,
     risk: 1,
     battery: 87,
-    coords: '44.1504°N 7.1298°E',
-    x: 48,
-    y: 18,
+    coords: '48.6644°N 1.8156°E',
+    lat: 48.6644,
+    lng: 1.8156,
+    perimeter: [
+      [48.72, 1.75], [48.74, 1.85], [48.65, 1.90], [48.60, 1.80], [48.62, 1.70]
+    ],
     lastUpdate: 'Il y a 8 min',
   },
 ];
+
+// Custom icons
+const createIcon = (status: 'safe' | 'warn' | 'fire', isSelected: boolean) => {
+  const color = status === 'fire' ? '#ff3300' : status === 'warn' ? '#ffaa00' : '#00cc66';
+  const size = isSelected ? 24 : 16;
+  const pulseHtml = isSelected && status === 'fire' 
+    ? `<div style="position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid ${color}; animation: pulse-ring 1.2s infinite;"></div>` 
+    : '';
+  
+  return L.divIcon({
+    className: 'custom-leaflet-icon',
+    html: `
+      ${pulseHtml}
+      <div style="width: ${size}px; height: ${size}px; background-color: ${color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px ${color}; position: relative; z-index: 2; transition: all 0.3s ease;"></div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+};
+
+const MapController = ({ center }: { center: [number, number] }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo(center, 11, { duration: 1.5 });
+  }, [center, map]);
+  return null;
+};
 
 export const Carte: React.FC = () => {
   const navigate = useNavigate();
@@ -78,7 +120,6 @@ export const Carte: React.FC = () => {
   const handleRefresh = () => {
     setIsRefreshing(true);
     setTimeout(() => {
-      // Simulate refreshing metrics slightly
       setCameras((prev) =>
         prev.map((c) => {
           if (c.status === 'fire') {
@@ -121,80 +162,55 @@ export const Carte: React.FC = () => {
         </button>
       </div>
 
-      <div className="map-container">
-        {/* Futuristic Topography Vector Map Representation */}
-        <svg className="map-vector" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {/* Radar Scanning Sweep Circle */}
-          <circle cx="50" cy="50" r="45" stroke="rgba(255, 69, 0, 0.04)" strokeWidth="0.5" fill="none" />
-          <circle cx="50" cy="50" r="30" stroke="rgba(255, 255, 255, 0.02)" strokeWidth="0.5" fill="none" />
-          <circle cx="50" cy="50" r="15" stroke="rgba(255, 255, 255, 0.02)" strokeWidth="0.5" fill="none" />
-
-          {/* Grid lines */}
-          <line x1="10" y1="0" x2="10" y2="100" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
-          <line x1="30" y1="0" x2="30" y2="100" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
-          <line x1="50" y1="0" x2="50" y2="100" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
-          <line x1="70" y1="0" x2="70" y2="100" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
-          <line x1="90" y1="0" x2="90" y2="100" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
+      <div className="map-container" style={{ position: 'relative' }}>
+        <MapContainer 
+          center={selectedCam ? [selectedCam.lat, selectedCam.lng] : [46.2276, 2.2137]} 
+          zoom={selectedCam ? 11 : 5} 
+          style={{ width: '100%', height: '100%', background: '#1a1a1a', borderRadius: '16px' }}
+          zoomControl={false}
+          attributionControl={false}
+        >
+          {/* Tuiles sombres CARTO (très adaptées à une interface Sci-Fi / Cyber) */}
+          <TileLayer
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          />
+          {selectedCam && <MapController center={[selectedCam.lat, selectedCam.lng]} />}
           
-          <line x1="0" y1="10" x2="100" y2="10" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
-          <line x1="0" y1="30" x2="100" y2="30" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
-          <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
-          <line x1="0" y1="70" x2="100" y2="70" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
-          <line x1="0" y1="90" x2="100" y2="90" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="0.2" />
+          {cameras.map((cam) => {
+            const isSelected = cam.id === selectedCamId;
+            const polyColor = cam.status === 'fire' ? '#ff3300' : cam.status === 'warn' ? '#ffaa00' : '#00cc66';
+            
+            return (
+              <React.Fragment key={cam.id}>
+                {/* Surface area polygon */}
+                <Polygon 
+                  positions={cam.perimeter} 
+                  pathOptions={{ 
+                    color: polyColor, 
+                    fillOpacity: isSelected ? 0.25 : 0.1,
+                    weight: isSelected ? 3 : 1,
+                    dashArray: isSelected ? undefined : '5, 5'
+                  }} 
+                  eventHandlers={{
+                    click: () => setSelectedCamId(cam.id),
+                  }}
+                />
+                {/* Camera Node Marker */}
+                <Marker 
+                  position={[cam.lat, cam.lng]} 
+                  icon={createIcon(cam.status, isSelected)}
+                  eventHandlers={{
+                    click: () => setSelectedCamId(cam.id),
+                  }}
+                />
+              </React.Fragment>
+            );
+          })}
+        </MapContainer>
 
-          {/* Contour topographic paths (simulated mountains/forest land shapes) */}
-          <path
-            d="M -10,30 Q 15,10 30,35 T 70,25 T 110,40"
-            fill="none"
-            stroke="rgba(255, 255, 255, 0.04)"
-            strokeWidth="0.6"
-          />
-          <path
-            d="M -10,50 Q 20,40 45,65 T 85,50 T 110,65"
-            fill="none"
-            stroke="rgba(255, 255, 255, 0.03)"
-            strokeWidth="0.5"
-          />
-          <path
-            d="M -10,75 Q 10,85 35,68 T 75,85 T 110,70"
-            fill="none"
-            stroke="rgba(255, 69, 0, 0.05)"
-            strokeWidth="0.8"
-          />
-
-          {/* High risk zone glowing polygon overlay */}
-          <polygon
-            points="55,60 75,55 85,75 70,88 50,75"
-            fill="rgba(255, 69, 0, 0.06)"
-            stroke="rgba(255, 69, 0, 0.2)"
-            strokeWidth="0.4"
-            strokeDasharray="1,1"
-          />
-          <text x="60" y="80" fill="rgba(255, 69, 0, 0.4)" fontSize="2" fontWeight="bold">ZONE À HAUT RISQUE</text>
-        </svg>
-
-        {/* Camera hotspot overlays */}
-        {cameras.map((cam) => {
-          const isSelected = cam.id === selectedCamId;
-          return (
-            <button
-              key={cam.id}
-              className={`camera-node ${cam.status} ${isSelected ? 'selected' : ''}`}
-              style={{ left: `${cam.x}%`, top: `${cam.y}%` }}
-              onClick={() => setSelectedCamId(cam.id)}
-            >
-              <span className="ping-ring" />
-              <span className="dot-center">
-                <CameraIcon size={12} className="node-icon" />
-              </span>
-              <span className="cam-label">{cam.name.split(' ')[0]}</span>
-            </button>
-          );
-        })}
-
-        {/* Selected Camera Details overlay (floating slide-up glassmorphic panel) */}
+        {/* Selected Camera Details overlay */}
         {selectedCam && (
-          <div className="camera-details-panel">
+          <div className="camera-details-panel" style={{ zIndex: 1000, position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', width: '90%' }}>
             <div className="panel-header">
               <h3>{selectedCam.name}</h3>
               <button className="panel-close-btn" onClick={() => setSelectedCamId(null)}>
@@ -202,7 +218,6 @@ export const Carte: React.FC = () => {
               </button>
             </div>
             
-            {/* Live Camera Stream Simulator */}
             <div className="panel-preview">
               {selectedCam.status === 'fire' ? (
                 <div className="feed-fire-alert">

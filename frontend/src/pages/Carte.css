@@ -73,122 +73,21 @@
   box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
-.map-vector {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0.95;
-}
-
-/* ---------- Camera Node Overlay ---------- */
-.camera-node {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  outline: none;
-}
-
-.camera-node .dot-center {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  border: 2px solid #000;
-}
-
-.camera-node.safe .dot-center {
-  background: var(--safe);
-  color: #042b14;
-}
-
-.camera-node.warn .dot-center {
-  background: var(--warn);
-  color: #2b1700;
-}
-
-.camera-node.fire .dot-center {
-  background: var(--danger);
-  color: #ffffff;
-}
-
-/* Pulsating Sonar Ring */
-.camera-node .ping-ring {
-  position: absolute;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.5);
-}
-
-.camera-node.safe .ping-ring {
-  border: 2px solid var(--safe);
-  animation: pulse-ring 2.5s infinite;
-}
-
-.camera-node.warn .ping-ring {
-  border: 2px solid var(--warn);
-  animation: pulse-ring 1.8s infinite;
-}
-
-.camera-node.fire .ping-ring {
-  border: 2px solid var(--danger);
-  animation: pulse-ring 1.2s infinite;
-}
-
+/* Pulsating Sonar Ring pour Leaflet */
 @keyframes pulse-ring {
   0% {
-    transform: scale(0.5);
+    transform: translate(-50%, -50%) scale(0.5);
     opacity: 0.8;
   }
   100% {
-    transform: scale(1.6);
+    transform: translate(-50%, -50%) scale(1.6);
     opacity: 0;
   }
 }
 
-.camera-node.selected .dot-center {
-  transform: scale(1.25);
-  box-shadow: 0 0 15px currentColor;
-}
 
-.camera-node.selected.safe {
-  color: var(--safe);
-}
 
-.camera-node.selected.warn {
-  color: var(--warn);
-}
 
-.camera-node.selected.fire {
-  color: var(--danger);
-}
-
-.camera-node .cam-label {
-  margin-top: 4px;
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--text-dim);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-  pointer-events: none;
-  letter-spacing: 0.2px;
-  background: rgba(10, 10, 13, 0.7);
-  padding: 1px 4px;
-  border-radius: 4px;
-}
 
 /* ---------- Glassmorphic Panel ---------- */
 .camera-details-panel {
