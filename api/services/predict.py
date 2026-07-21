@@ -7,157 +7,267 @@ import os
 import io
 import base64
 import numpy as np
-import tensorflow as tf
+import cv2
+import torch
 from PIL import Image
-import matplotlib.cm as cm
-import matplotlib
+from ultralytics import YOLO
+from ultralytics.nn.tasks import DetectionModel
 
-matplotlib.use("Agg")
+# Contournement de sécurité PyTorch 2.6+ pour charger le modèle YOLO local
+try:
+    torch.serialization.add_safe_globals([DetectionModel])
+except Exception:
+    pass
 
-# Tentative de charger d'abord fire_model.keras (comme dans l'ancien projet)
-# Sinon, on retombe sur mobilenet_v2.weights.h5 (qui risque de planter car c'est juste des poids)
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "..")
-MODEL_PATH_KERAS = os.path.join(MODEL_DIR, "fire_model.keras")
-MODEL_PATH_H5 = os.path.join(MODEL_DIR, "mobilenet_v2.weights.h5")
+MODEL_DIR = os.path.dirname(__file__)
+# Le modèle best.pt doit être placé dans le dossier 'api'
+MODEL_PATH = os.path.join(MODEL_DIR, "..", "best.pt")
 
 _model = None
-_feature_model = None
-GRADCAM_AVAILABLE = False
+_person_model = None
 
 def init_model():
-    global _model, _feature_model, GRADCAM_AVAILABLE
-    if _model is not None:
+    global _model, _person_model
+    if _model is not None and _person_model is not None:
         return
     
-    path_to_load = MODEL_PATH_KERAS if os.path.exists(MODEL_PATH_KERAS) else MODEL_PATH_H5
-    print(f"Chargement du modele depuis {path_to_load}...")
-    
+    print(f"Chargement du modèle YOLO depuis {MODEL_PATH}...")
+    if not os.path.exists(MODEL_PATH):
+        print(f"ATTENTION: Fichier {MODEL_PATH} introuvable.")
+        return
+        
     try:
-        _model = tf.keras.models.load_model(path_to_load)
-        print("Modele charge avec succes.")
+        import torch
+        original_load = torch.load
+        def custom_load(*args, **kwargs):
+            kwargs['weights_only'] = False
+            return original_load(*args, **kwargs)
+        torch.load = custom_load
+        
+        _model = YOLO(MODEL_PATH)
+        _person_model = YOLO('yolo11n.pt')
+        
+        torch.load = original_load
+        print("Modèles YOLO chargés avec succès.")
     except Exception as e:
-        print(f"Erreur de chargement du modele complet: {e}")
-        # Si ça plante, on tente l'architecture par défaut (au cas où ce sont juste les poids)
-        base = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3), include_top=False, weights=None)
-        x = tf.keras.layers.GlobalAveragePooling2D()(base.output)
-        x = tf.keras.layers.Dense(1, activation='sigmoid')(x)
-        _model = tf.keras.models.Model(inputs=base.input, outputs=x)
-        try:
-            _model.load_weights(path_to_load)
-            print("Poids chargés sur l'architecture de secours.")
-        except Exception as e2:
-            print(f"Impossible de charger les poids : {e2}")
-
-    try:
-        # Logique de l'ancien projet
-        _mobilenet = _model.get_layer("mobilenetv2_1.00_224")
-        _feature_model = tf.keras.Model(
-            inputs=_mobilenet.inputs,
-            outputs=_mobilenet.get_layer("out_relu").output,
-        )
-        GRADCAM_AVAILABLE = True
-        print("Grad-CAM disponible via 'mobilenetv2_1.00_224'.")
-    except Exception as e:
-        # Fallback si le layer s'appelle autrement (ex: 'mobilenetv2_1.00_224' introuvable)
-        print(f"Grad-CAM (logique ancienne) non disponible : {e}")
-        GRADCAM_AVAILABLE = False
-
-
-def preprocess_image(image_bytes):
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    img = img.resize((224, 224))
-    # Prétraitement de l'ancien projet : division par 255.0 au lieu de preprocess_input de keras
-    return np.expand_dims(np.array(img, dtype=np.float32) / 255.0, axis=0)
-
-def compute_gradcam(img_array, is_fire, model):
-    if not GRADCAM_AVAILABLE or _feature_model is None:
-        return None
-    try:
-        img_tensor = tf.cast(img_array, tf.float32)
-        conv_features = _feature_model(img_tensor)
-
-        with tf.GradientTape() as tape:
-            tape.watch(conv_features)
-            x = tf.reduce_mean(conv_features, axis=[1, 2])
-            # Attention: L'ancien projet reprenait à model.layers[2:]
-            # On vérifie si ça ne crashe pas.
-            for layer in model.layers[2:]:
-                x = layer(x, training=False)
-            predictions = x
-            loss = (1.0 - predictions[:, 0]) if is_fire else predictions[:, 0]
-
-        grads = tape.gradient(loss, conv_features)
-        if grads is None:
-            return None
-
-        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-        heatmap = tf.reduce_sum(conv_features[0] * pooled_grads, axis=-1)
-        heatmap = tf.nn.relu(heatmap)
-
-        max_val = tf.reduce_max(heatmap)
-        heatmap = heatmap / max_val if max_val > 0 else heatmap
-
-        return heatmap.numpy()
-    except Exception as e:
-        print(f"Erreur Grad-CAM : {e}")
-        return None
-
-def make_overlay(original_bytes, heatmap_np, alpha=0.45):
-    orig = Image.open(io.BytesIO(original_bytes)).convert("RGB")
-    W, H = orig.size
-
-    hm_img = Image.fromarray(np.uint8(255 * heatmap_np))
-    
-    # Utilisation de Image.Resampling.LANCZOS (Pillow >= 10.0)
-    try:
-        resample_filter = Image.Resampling.LANCZOS
-    except AttributeError:
-        resample_filter = Image.LANCZOS
-
-    # Redimensionnement de la heatmap à la taille de l'image ORIGINALE
-    hm_img = hm_img.resize((W, H), resample_filter)
-    
-    colormap = matplotlib.colormaps["inferno"]
-    colored = colormap(np.array(hm_img, dtype=np.float32) / 255.0)[:, :, :3]
-    hm_colored = Image.fromarray(np.uint8(255 * colored))
-    
-    overlay = Image.blend(orig, hm_colored, alpha=alpha)
-    buf = io.BytesIO()
-    overlay.save(buf, format="JPEG", quality=90)
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
-
+        print(f"Erreur lors du chargement du modèle YOLO: {e}")
 
 def process_image(image_bytes: bytes):
-    if _model is None:
-        raise Exception("Le modèle n'a pas pu être chargé. Assurez-vous d'avoir fire_model.keras dans l'API.")
+    if _model is None or _person_model is None:
+        raise Exception("Les modèles YOLO n'ont pas pu être chargés. Assurez-vous d'avoir best.pt dans le dossier api.")
 
-    img_array = preprocess_image(image_bytes)
+    # Lire l'image envoyée (OpenCV)
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
-    # Inférence selon l'ancien code
-    print("Analyse de l'image en cours par le modèle IA...")
-    raw_score = float(_model.predict(img_array, verbose=0)[0][0])
+    print("Analyse de l'image en cours par les modèles YOLO IA...")
+    # Lancer la prédiction avec un seuil de confiance plus bas (0.15) pour le feu
+    results_fire = _model.predict(source=img, conf=0.15, verbose=False)
     
-    # L'ancien code considère que c'est le feu si score < 0.5 (et non l'inverse !)
-    is_fire = raw_score < 0.5
-    confidence = round((1.0 - raw_score if is_fire else raw_score) * 100, 1)
-
+    # Lancer la prédiction pour les personnes (classe 0 dans COCO)
+    results_person = _person_model.predict(source=img, classes=[0], conf=0.30, verbose=False)
+    
+    # Récupérer l'image avec les boîtes dessinées dessus (Feu/Fumée)
+    res_plotted = results_fire[0].plot()
+    
+    # Extraire les métadonnées de détection
+    detections = []
+    
+    is_fire = False
+    max_fire_conf = 0.0
+    
+    # Détections du modèle Feu/Fumée
+    if results_fire[0].boxes is not None:
+        for box in results_fire[0].boxes:
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            conf = float(box.conf[0])
+            cls_id = int(box.cls[0])
+            class_name = _model.names[cls_id] if _model and hasattr(_model, 'names') else str(cls_id)
+            
+            is_fire = True
+            if conf > max_fire_conf:
+                max_fire_conf = conf
+                
+            detections.append({
+                "bbox": [round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)],
+                "confidence": round(conf, 4),
+                "class": class_name
+            })
+            
+    # Détections du modèle Personnes
+    if results_person[0].boxes is not None:
+        for box in results_person[0].boxes:
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            conf = float(box.conf[0])
+            cls_id = int(box.cls[0])
+            class_name = _person_model.names[cls_id] if _person_model and hasattr(_person_model, 'names') else "person"
+            
+            # Dessiner la boîte pour la personne sur l'image (en bleu)
+            cv2.rectangle(res_plotted, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 2)
+            label = f"{class_name} {conf:.2f}"
+            cv2.putText(res_plotted, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            
+            detections.append({
+                "bbox": [round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)],
+                "confidence": round(conf, 4),
+                "class": class_name
+            })
+            
     if is_fire:
-        print(f"🔥 ALERTE : Il y a le feu ! (Analyse Image | Confiance : {confidence}%)")
+        confidence_percent = round(max_fire_conf * 100, 1)
+        print(f"🔥 ALERTE : Il y a le feu ! (Analyse Image | Confiance max : {confidence_percent}%)")
+        
+        # Enregistrer l'alerte en base de données en arrière-plan
+        save_alert_async("fire", "Scan Manuel", confidence_percent, "Non spécifié")
     else:
-        print(f"🟢 RAS - Surveillance normale (Confiance sécurité : {confidence}%)")
-
-    # Génération du Grad-CAM
-    heatmap = compute_gradcam(img_array, is_fire, _model)
-    gradcam_b64 = None
-    if heatmap is not None:
-        gradcam_b64 = make_overlay(image_bytes, heatmap)
-
+        print(f"🟢 RAS - Surveillance normale (Aucune détection de feu)")
+    
+    # Encoder l'image en JPEG
+    success, encoded_img = cv2.imencode('.jpg', res_plotted)
+    if not success:
+        raise Exception("Erreur d'encodage de l'image")
+    
+    # Convertir l'image en Base64
+    img_b64 = base64.b64encode(encoded_img.tobytes()).decode('utf-8')
+    
+    # Renvoyer le JSON avec les détections et l'image
     return {
-        "fire_detected": is_fire,
-        "confidence": confidence / 100.0, # le frontend s'attend à un score de 0 à 1
-        "gradcam_base64": f"data:image/jpeg;base64,{gradcam_b64}" if gradcam_b64 else None
+        "detections": detections,
+        "image_base64": img_b64
     }
 
+import httpx
+import time
+import threading
+
+def save_alert_async(status: str, location: str, confidence: float, coords: str):
+    def _save():
+        from db.database import SessionLocal
+        from db.models import Alert
+        db = SessionLocal()
+        try:
+            db.add(Alert(status=status, location=location, confidence=confidence, coords=coords))
+            db.commit()
+        except Exception as e:
+            print(f"Erreur DB (Background): {e}")
+        finally:
+            db.close()
+    threading.Thread(target=_save, daemon=True).start()
+
+# Variable globale pour stocker le dernier état de détection
+latest_detection = {
+    "fire": False,
+    "person": False,
+    "confidence": 0.0,
+    "timestamp": 0.0
+}
+
+def generate_video_stream(camera_url: str):
+    global latest_detection
+    if _model is None:
+        print("Modèle non chargé, impossible de traiter la vidéo.")
+        return
+
+    print(f"Tentative de connexion au flux {camera_url} avec OpenCV...")
+    
+    try:
+        # cv2.VideoCapture est beaucoup plus fiable pour parser l'authentification Digest et le MJPEG des caméras Axis
+        cap = cv2.VideoCapture(camera_url)
+        if not cap.isOpened():
+            raise Exception("Impossible d'ouvrir le flux vidéo avec OpenCV")
+            
+        frame_count = 0
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                raise Exception("Perte du flux vidéo ou fin du stream")
+                
+            frame_count += 1
+            if frame_count % 10 != 0:
+                continue
+                
+            # Optimisation: Baisser la résolution pour alléger l'encodage et le traitement
+            frame = cv2.resize(frame, (640, 480))
+            
+            # Inférence YOLO (Feu & Personne)
+            results_fire = _model.predict(source=frame, conf=0.25, verbose=False)
+            results_person = _person_model.predict(source=frame, classes=[0], conf=0.30, verbose=False)
+            
+            annotated_frame = results_fire[0].plot()
+            
+            # Gestion Personnes
+            person_detected = False
+            max_person_conf = 0.0
+            if len(results_person) > 0 and len(results_person[0].boxes) > 0:
+                person_detected = True
+                for box in results_person[0].boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    conf = float(box.conf[0])
+                    if conf > max_person_conf:
+                        max_person_conf = conf
+                    cls_id = int(box.cls[0])
+                    class_name = _person_model.names[cls_id] if hasattr(_person_model, 'names') else "person"
+                    cv2.rectangle(annotated_frame, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 2)
+                    label = f"{class_name} {conf:.2f}"
+                    cv2.putText(annotated_frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            
+            # Gestion Indépendante : Feu
+            fire_detected = False
+            max_fire_conf = 0.0
+            if len(results_fire) > 0 and len(results_fire[0].boxes) > 0:
+                fire_detected = True
+                max_fire_conf = max([float(box.conf) for box in results_fire[0].boxes])
+                
+            if fire_detected:
+                confidence = round(max_fire_conf * 100, 1)
+                if not latest_detection.get("fire", False):
+                    save_alert_async("fire", "AXIS M1065-L (Locale)", confidence, "46.2276°N 2.2137°E")
+                latest_detection["fire"] = True
+                latest_detection["fire_ts"] = time.time()
+                print(f"[VIDEO] 🔥 ALERTE : Feu/Fumée détectée ! (Confiance max : {confidence}%)")
+            else:
+                if time.time() - latest_detection.get("fire_ts", 0) > 5.0:
+                    latest_detection["fire"] = False
+
+            # Gestion Indépendante : Personne
+            if person_detected:
+                confidence = round(max_person_conf * 100, 1)
+                if not latest_detection.get("person", False):
+                    save_alert_async("warn", "AXIS M1065-L (Personne)", confidence, "46.2276°N 2.2137°E")
+                latest_detection["person"] = True
+                latest_detection["person_ts"] = time.time()
+                print(f"[VIDEO] 👤 INTRUSION : Personne détectée ! (Confiance max : {confidence}%)")
+            else:
+                if time.time() - latest_detection.get("person_ts", 0) > 5.0:
+                    latest_detection["person"] = False
+                    
+            if not fire_detected and not person_detected:
+                if frame_count % 30 == 0:
+                    print("[VIDEO] 🟢 RAS - Surveillance vidéo normale")
+                
+            # Encodage en JPEG
+            ret, buffer = cv2.imencode('.jpg', annotated_frame)
+            if ret:
+                frame_bytes = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n'
+                       b'Content-Length: ' + str(len(frame_bytes)).encode() + b'\r\n\r\n' + 
+                       frame_bytes + b'\r\n')
+    except Exception as e:
+        print(f"Erreur/Perte du flux vidéo: {e}")
+        error_img = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.putText(error_img, "ERREUR: CAMERA", (50, 200), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3, cv2.LINE_AA)
+        cv2.putText(error_img, str(e)[:60], (50, 260), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+        ret, buffer = cv2.imencode('.jpg', error_img)
+        if ret:
+            # Yield several times so the browser doesn't close the stream immediately and shows the error
+            for _ in range(10):
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                time.sleep(0.5)
+
 # Initialisation du modèle dès le chargement du fichier (au démarrage du serveur)
-print("--- DÉMARRAGE DU SERVICE IA ---")
+print("--- DÉMARRAGE DU SERVICE IA (YOLO) ---")
 init_model()

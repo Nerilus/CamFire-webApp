@@ -4,7 +4,6 @@ import { MapContainer, TileLayer, Marker, Polygon, useMap } from 'react-leaflet'
 import L from 'leaflet';
 import { FlameIcon, WarningIcon, CheckCircleIcon, XIcon, RefreshIcon } from '../components/icons';
 import { fetchZonesWeather } from '../services/weatherService';
-import { WindOverlay } from '../components/WindOverlay';
 import './Carte.css';
 
 interface Camera {
@@ -26,65 +25,20 @@ interface Camera {
 
 const initialCameras: Camera[] = [
   {
-    id: 'cam-1',
-    name: 'Bois de Vincennes (Paris Est)',
-    status: 'fire',
-    temp: 84,
-    risk: 94,
-    battery: 78,
-    coords: '48.8283°N 2.4330°E',
-    lat: 48.8283,
-    lng: 2.4330,
-    perimeter: [
-      [48.835, 2.420], [48.840, 2.445], [48.832, 2.465], [48.818, 2.455], [48.820, 2.425]
-    ],
-    lastUpdate: 'Il y a 30s',
-  },
-  {
-    id: 'cam-2',
-    name: 'Bois de Boulogne (Paris Ouest)',
-    status: 'warn',
-    temp: 41,
-    risk: 61,
-    battery: 92,
-    coords: '48.8624°N 2.2492°E',
-    lat: 48.8624,
-    lng: 2.2492,
-    perimeter: [
-      [48.875, 2.240], [48.878, 2.260], [48.855, 2.265], [48.845, 2.245], [48.855, 2.230]
-    ],
-    lastUpdate: 'Il y a 2 min',
-  },
-  {
-    id: 'cam-3',
-    name: 'Forêt de Fontainebleau',
+    id: 'cam-axis-1',
+    name: 'AXIS M1065-L (Locale)',
     status: 'safe',
-    temp: 24,
-    risk: 4,
-    battery: 99,
-    coords: '48.4066°N 2.6685°E',
-    lat: 48.4066,
-    lng: 2.6685,
+    temp: 20,
+    risk: 0,
+    battery: 100,
+    coords: '46.2276°N 2.2137°E',
+    lat: 46.2276,
+    lng: 2.2137,
     perimeter: [
-      [48.45, 2.60], [48.46, 2.75], [48.35, 2.80], [48.32, 2.65], [48.38, 2.55]
+      [46.25, 2.15], [46.30, 2.30], [46.15, 2.25], [46.10, 2.10], [46.20, 2.05]
     ],
-    lastUpdate: 'Il y a 5 min',
-  },
-  {
-    id: 'cam-4',
-    name: 'Forêt de Rambouillet',
-    status: 'safe',
-    temp: 18,
-    risk: 1,
-    battery: 87,
-    coords: '48.6644°N 1.8156°E',
-    lat: 48.6644,
-    lng: 1.8156,
-    perimeter: [
-      [48.72, 1.75], [48.74, 1.85], [48.65, 1.90], [48.60, 1.80], [48.62, 1.70]
-    ],
-    lastUpdate: 'Il y a 8 min',
-  },
+    lastUpdate: 'En direct',
+  }
 ];
 
 // Custom icons
@@ -95,17 +49,7 @@ const createIcon = (status: 'safe' | 'warn' | 'fire', isSelected: boolean, windD
     ? `<div style="position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid ${color}; animation: pulse-ring 1.2s infinite;"></div>` 
     : '';
   
-  // Arrow pointing in the wind direction
-  // The arrow represents where the wind is going. If direction is 90 (East), the arrow should point right.
-  // We use an SVG path of an arrow. By default, it points UP (0 degrees, North).
-  const windHtml = windDirection !== undefined 
-    ? `
-      <div style="position: absolute; top: 50%; left: 50%; width: 40px; height: 40px; margin-top: -20px; margin-left: -20px; transform: rotate(${windDirection}deg); pointer-events: none; z-index: 1;">
-        <svg viewBox="0 0 40 40" width="40" height="40" style="opacity: ${isSelected ? 0.9 : 0.6}">
-          <path d="M20 4 L20 20 M20 4 L14 10 M20 4 L26 10" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-        </svg>
-      </div>
-    ` : '';
+  const windHtml = '';
   
   return L.divIcon({
     className: 'custom-leaflet-icon',
@@ -130,9 +74,45 @@ const MapController = ({ center }: { center: [number, number] }) => {
 export const Carte: React.FC = () => {
   const navigate = useNavigate();
   const [cameras, setCameras] = useState<Camera[]>(initialCameras);
-  const [selectedCamId, setSelectedCamId] = useState<string | null>('cam-1');
+  const [selectedCamId, setSelectedCamId] = useState<string | null>('cam-axis-1');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showWind, setShowWind] = useState(true);
+  const [fireAlert, setFireAlert] = useState<{fire: boolean, confidence: number, timestamp: number} | null>(null);
+
+  // Demander la permission pour les notifications au chargement
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Polling du statut de la caméra (toutes les 2 secondes)
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/scan/status');
+        if (res.ok) {
+          const data = await res.json();
+          setFireAlert(prev => {
+            // Si on détecte un nouveau feu (timestamp différent ou passage de False à True)
+            if (data.fire && (!prev || prev.timestamp !== data.timestamp)) {
+              if ("Notification" in window && Notification.permission === "granted") {
+                new Notification("🔥 ALERTE INCENDIE", { 
+                  body: `Feu/Fumée détectée ! (Confiance: ${data.confidence}%)`,
+                  icon: '/favicon.ico' // Optionnel
+                });
+              }
+            }
+            return data;
+          });
+        }
+      } catch (err) {
+        // Ignorer les erreurs de réseau (ex: serveur éteint)
+      }
+    };
+    
+    const intervalId = setInterval(checkStatus, 2000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     const loadWeather = async () => {
@@ -160,10 +140,6 @@ export const Carte: React.FC = () => {
   }, []);
 
   const selectedCam = cameras.find((c) => c.id === selectedCamId);
-
-  // Calculate average wind metrics to drive the global WindOverlay
-  const avgWindSpeed = cameras.reduce((sum, cam) => sum + (cam.wind || 0), 0) / (cameras.length || 1);
-  const avgWindDir = cameras.reduce((sum, cam) => sum + (cam.wind_direction || 0), 0) / (cameras.length || 1);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -209,15 +185,6 @@ export const Carte: React.FC = () => {
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-dim)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
-            <input 
-              type="checkbox" 
-              checked={showWind} 
-              onChange={(e) => setShowWind(e.target.checked)} 
-              style={{ accentColor: 'var(--info)' }}
-            />
-            VENT
-          </label>
           <button
             className={`carte-refresh-btn ${isRefreshing ? 'spinning' : ''}`}
             onClick={handleRefresh}
@@ -229,8 +196,21 @@ export const Carte: React.FC = () => {
       </div>
 
       <div className="map-container" style={{ position: 'relative' }}>
-        {showWind && <WindOverlay windDirection={avgWindDir} windSpeed={avgWindSpeed} />}
         
+        {/* Toast / Bannière visuelle d'alerte incendie */}
+        {fireAlert && fireAlert.fire && (
+          <div style={{
+            position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)',
+            backgroundColor: 'rgba(255, 51, 0, 0.9)', color: 'white', padding: '12px 24px',
+            borderRadius: '8px', zIndex: 1000, display: 'flex', alignItems: 'center', gap: '12px',
+            boxShadow: '0 0 20px rgba(255, 51, 0, 0.6)', animation: 'pulse-ring 2s infinite',
+            fontWeight: 'bold', letterSpacing: '1px', border: '1px solid #ffaa00'
+          }}>
+            <FlameIcon size={24} />
+            <span>DÉTECTION EN COURS : FEU/FUMÉE ({fireAlert.confidence}%)</span>
+          </div>
+        )}
+
         <MapContainer 
           center={selectedCam ? [selectedCam.lat, selectedCam.lng] : [46.2276, 2.2137]} 
           zoom={selectedCam ? 11 : 5} 
@@ -304,14 +284,17 @@ export const Carte: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <div className="feed-normal">
-                  <div className="scanline" />
+                <div className="feed-normal" style={{ overflow: 'hidden', padding: 0 }}>
+                  <img 
+                    src="http://localhost:8000/scan/stream" 
+                    alt="Axis Camera Stream (AI Analyzed)" 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  />
                   <span className="feed-status-tag">EN DIRECT</span>
                 </div>
               )}
               <div className="hud-overlay">
                 <span>TEMP: {selectedCam.temp}°C</span>
-                {selectedCam.wind !== undefined && <span>VENT: {selectedCam.wind}km/h {selectedCam.wind_direction !== undefined ? `(${selectedCam.wind_direction}deg)` : ''}</span>}
                 {selectedCam.humidity !== undefined && <span>HUM: {selectedCam.humidity}%</span>}
                 <span>BATT: {selectedCam.battery}%</span>
               </div>

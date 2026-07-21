@@ -1,9 +1,12 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export interface ScanResult {
-  fire_detected: boolean;
-  confidence: number;
-  gradcam_base64?: string | null;
+  detections: Array<{
+    bbox: number[];
+    confidence: number;
+    class: string;
+  }>;
+  image_base64: string;
 }
 
 export const scanService = {

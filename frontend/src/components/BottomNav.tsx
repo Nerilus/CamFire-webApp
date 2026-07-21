@@ -4,7 +4,7 @@ import { HomeIcon, CameraIcon, MapIcon, ClockIcon, BellIcon, SettingsIcon, Users
 
 const items = [
   { to: '/home', label: 'ACCUEIL', Icon: HomeIcon },
-  { to: '/scan', label: 'SCAN', Icon: CameraIcon },
+  // { to: '/scan', label: 'SCAN', Icon: CameraIcon },
   { to: '/carte', label: 'CARTE', Icon: MapIcon },
   { to: '/historique', label: 'HISTORIQUE', Icon: ClockIcon },
   { to: '/alertes', label: 'ALERTES', Icon: BellIcon },
