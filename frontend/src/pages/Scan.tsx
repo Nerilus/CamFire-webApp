@@ -69,10 +69,12 @@ export const Scan: React.FC = () => {
     setGradcamImage(null);
     try {
       const result = await scanService.predictImage(blob);
-      setFireDetected(result.fire_detected);
-      setConfidence(result.confidence);
-      if (result.gradcam_base64) {
-        setGradcamImage(result.gradcam_base64);
+      const fireDetections = result.detections.filter((d: any) => d.class !== 'person');
+      const isFire = fireDetections.length > 0;
+      setFireDetected(isFire);
+      setConfidence(isFire ? Math.max(...fireDetections.map((d: any) => d.confidence)) : 0);
+      if (result.image_base64) {
+        setGradcamImage(`data:image/jpeg;base64,${result.image_base64}`);
       }
     } catch (err) {
       console.error(err);

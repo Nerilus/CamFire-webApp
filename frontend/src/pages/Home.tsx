@@ -26,7 +26,7 @@ export const Home: React.FC = () => {
   const [showAlert, setShowAlert] = useState(true);
   const [weather, setWeather] = useState<WeatherZoneData[]>([]);
   const [forecasts, setForecasts] = useState<ZoneForecast[]>([]);
-  const [selectedCamId, setSelectedCamId] = useState<string>('cam-1');
+  const [selectedCamId, setSelectedCamId] = useState<string>('cam-axis-1');
   const [isLoadingForecast, setIsLoadingForecast] = useState(true);
 
   useEffect(() => {
@@ -106,7 +106,7 @@ export const Home: React.FC = () => {
         <button className="home-map-preview" onClick={() => navigate('/carte')}>
           <div style={{ height: '120px', width: '100%', position: 'relative' }}>
             <MapContainer 
-              center={[48.6, 2.3]} 
+              center={[46.2276, 2.2137]} 
               zoom={7} 
               style={{ width: '100%', height: '100%', background: '#1a1a1a', zIndex: 1 }}
               zoomControl={false}
@@ -117,10 +117,7 @@ export const Home: React.FC = () => {
               touchZoom={false}
             >
               <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
-              <CircleMarker center={[48.8283, 2.4330]} radius={5} pathOptions={{ color: getMarkerColor('cam-1'), fillColor: getMarkerColor('cam-1'), fillOpacity: 1 }} />
-              <CircleMarker center={[48.8624, 2.2492]} radius={5} pathOptions={{ color: getMarkerColor('cam-2'), fillColor: getMarkerColor('cam-2'), fillOpacity: 1 }} />
-              <CircleMarker center={[48.4066, 2.6685]} radius={5} pathOptions={{ color: getMarkerColor('cam-3'), fillColor: getMarkerColor('cam-3'), fillOpacity: 1 }} />
-              <CircleMarker center={[48.6644, 1.8156]} radius={5} pathOptions={{ color: getMarkerColor('cam-4'), fillColor: getMarkerColor('cam-4'), fillOpacity: 1 }} />
+              <CircleMarker center={[46.2276, 2.2137]} radius={5} pathOptions={{ color: getMarkerColor('cam-axis-1'), fillColor: getMarkerColor('cam-axis-1'), fillOpacity: 1 }} />
             </MapContainer>
             {/* Invisible overlay to ensure the button intercepts clicks over the map */}
             <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 2 }}></div>
@@ -185,6 +182,19 @@ export const Home: React.FC = () => {
               {cam.name}
             </button>
           ))}
+        </div>
+
+        {/* Flux vidéo de la caméra sélectionnée */}
+        <div style={{ marginTop: '20px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)', background: '#000', height: '240px', position: 'relative', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+          <img 
+            src="http://localhost:8000/scan/stream" 
+            alt="Flux en direct de la caméra" 
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+          <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: 'var(--safe)', border: '1px solid rgba(0, 204, 102, 0.3)', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)' }}>
+            <span className="status-dot" style={{ background: 'var(--safe)', width: '6px', height: '6px' }}></span>
+            EN DIRECT
+          </div>
         </div>
 
         {isLoadingForecast ? (

@@ -5,7 +5,8 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Pointeur vers le conteneur PostgreSQL défini dans le docker-compose
+# Si on est hors Docker, on pointe vers localhost par défaut.
 SQLALCHEMY_DATABASE_URL = os.getenv(
     "DATABASE_URL", 
-    "postgresql://mon_user:mon_mot_de_passe@db:5432/mon_app_db"
+    "postgresql://mon_user:mon_mot_de_passe@localhost:5432/mon_app_db"
 )

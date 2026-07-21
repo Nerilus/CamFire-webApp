@@ -33,53 +33,17 @@ export interface Camera {
 
 export const cameras: Camera[] = [
   {
-    id: 'cam-1',
-    name: 'Bois de Vincennes (Paris Est)',
-    status: 'fire',
-    temp: 84,
-    risk: 94,
-    battery: 78,
-    coords: '48.8283°N 2.4330°E',
-    x: 65,
-    y: 72,
-    lastUpdate: 'Il y a 30s',
-  },
-  {
-    id: 'cam-2',
-    name: 'Bois de Boulogne (Paris Ouest)',
-    status: 'warn',
-    temp: 41,
-    risk: 61,
-    battery: 92,
-    coords: '48.8624°N 2.2492°E',
-    x: 25,
-    y: 40,
-    lastUpdate: 'Il y a 2 min',
-  },
-  {
-    id: 'cam-3',
-    name: 'Forêt de Fontainebleau',
+    id: 'cam-axis-1',
+    name: 'AXIS M1065-L (Locale)',
     status: 'safe',
-    temp: 24,
-    risk: 4,
-    battery: 99,
-    coords: '48.4066°N 2.6685°E',
-    x: 80,
-    y: 32,
-    lastUpdate: 'Il y a 5 min',
-  },
-  {
-    id: 'cam-4',
-    name: 'Forêt de Rambouillet',
-    status: 'safe',
-    temp: 18,
-    risk: 1,
-    battery: 87,
-    coords: '48.6644°N 1.8156°E',
-    x: 48,
-    y: 18,
-    lastUpdate: 'Il y a 8 min',
-  },
+    temp: 20,
+    risk: 0,
+    battery: 100,
+    coords: '46.2276°N 2.2137°E', // Central France for demo purposes
+    x: 50,
+    y: 50,
+    lastUpdate: 'En direct',
+  }
 ];
 
 export interface EmergencyContact {
