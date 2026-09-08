@@ -18,20 +18,29 @@ class User(Base):
 
     @property
     def devices(self):
-        return [
-            {
-                "id": ud.device.id,
-                "device_id": ud.device.device_id,
-                "name": ud.custom_name or ud.device.name,
+        result = []
+        now = datetime.utcnow()
+        for ud in self.user_devices:
+            dev = ud.device
+            is_recent = dev.last_seen_at and (now - dev.last_seen_at).total_seconds() < 45
+            status_val = "online" if is_recent else "offline"
+            if dev.tamper_status == "tampered":
+                status_val = "tampered"
+            result.append({
+                "id": dev.id,
+                "device_id": dev.device_id,
+                "name": ud.custom_name or dev.name,
+                "role": ud.role or "owner",
                 "is_paired": True,
                 "paired_at": ud.paired_at,
-                "last_seen_at": ud.device.last_seen_at,
-                "lat": ud.device.lat,
-                "lng": ud.device.lng,
-                "status": "online"
-            }
-            for ud in self.user_devices
-        ]
+                "last_seen_at": dev.last_seen_at,
+                "lat": dev.lat,
+                "lng": dev.lng,
+                "status": status_val,
+                "tamper_status": dev.tamper_status or "normal",
+                "cpu_temp": dev.cpu_temp
+            })
+        return result
 
 class UserDevice(Base):
     __tablename__ = "user_devices"
@@ -59,6 +68,9 @@ class Device(Base):
     paired_at = Column(DateTime, nullable=True)
     code_expires_at = Column(DateTime, nullable=True)
     last_seen_at = Column(DateTime, nullable=True)
+    tamper_status = Column(String, default="normal", nullable=True) # 'normal', 'tampered', 'signal_lost'
+    cpu_temp = Column(Float, nullable=True)
+    last_tamper_alert_at = Column(DateTime, nullable=True)
     lat = Column(Float, default=46.2276, nullable=True)
     lng = Column(Float, default=2.2137, nullable=True)
 

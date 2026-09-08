@@ -495,10 +495,22 @@ export const Home: React.FC = () => {
               alt="Flux en direct de la caméra" 
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
-            <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: 'var(--safe)', border: '1px solid rgba(0, 204, 102, 0.3)', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)' }}>
-              <span className="status-dot" style={{ background: 'var(--safe)', width: '6px', height: '6px' }}></span>
-              EN DIRECT
-            </div>
+            {pairedDevice.tamper_status === 'tampered' ? (
+              <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(220, 38, 38, 0.9)', padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, color: '#fff', border: '1px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)', boxShadow: '0 0 15px rgba(220,38,38,0.6)' }}>
+                <span className="live-dot" style={{ background: '#fff', width: '7px', height: '7px' }}></span>
+                ⚠️ SABOTAGE DÉTECTÉ
+              </div>
+            ) : pairedDevice.status === 'offline' ? (
+              <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(217, 119, 6, 0.9)', padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, color: '#fff', border: '1px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)' }}>
+                <span style={{ background: '#f59e0b', width: '7px', height: '7px', borderRadius: '50%' }}></span>
+                🔴 SIGNAL PERDU (Dead Man's Switch)
+              </div>
+            ) : (
+              <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: 'var(--safe)', border: '1px solid rgba(0, 204, 102, 0.3)', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)' }}>
+                <span className="status-dot" style={{ background: 'var(--safe)', width: '6px', height: '6px' }}></span>
+                EN DIRECT {pairedDevice.cpu_temp ? `· ${pairedDevice.cpu_temp}°C` : ''}
+              </div>
+            )}
 
             <button 
               type="button"

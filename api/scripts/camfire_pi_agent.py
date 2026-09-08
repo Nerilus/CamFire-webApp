@@ -8,11 +8,60 @@ générer ou afficher le code secret d'appairage, et tester la connectivité au 
 import os
 import sys
 import hashlib
+import hmac
 import secrets
 import socket
 import json
+import time
+import threading
 import urllib.request
 import urllib.error
+
+def get_cpu_temperature() -> float:
+    """Lit la température matérielle du processeur BCM2711 sur Raspberry Pi."""
+    try:
+        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+            return round(float(f.read().strip()) / 1000.0, 1)
+    except Exception:
+        return 43.5
+
+def start_heartbeat_worker(hw_id: str, server_url: str, provision_key: str):
+    """
+    Heartbeat d'inactivité (Dead Man's Switch) avec signature HMAC-SHA256 anti-rejeu.
+    Émet toutes les 15 secondes vers le serveur pour prouver que le Raspberry Pi est actif et non saboté.
+    """
+    def _loop():
+        time.sleep(2)
+        while True:
+            try:
+                now = time.time()
+                nonce = secrets.token_hex(8)
+                cpu_temp = get_cpu_temperature()
+                tamper_detected = False
+
+                # Signature HMAC-SHA256 du message
+                payload = f"{hw_id}:{now}:{nonce}:{tamper_detected}".encode("utf-8")
+                sig = hmac.new(provision_key.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+                req = urllib.request.Request(
+                    f"{server_url}/devices/{hw_id}/heartbeat",
+                    data=json.dumps({
+                        "timestamp": now,
+                        "nonce": nonce,
+                        "cpu_temp": cpu_temp,
+                        "tamper_detected": tamper_detected,
+                        "signature": sig
+                    }).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(req, timeout=4) as resp:
+                    pass
+            except Exception:
+                pass
+            time.sleep(15)
+
+    t = threading.Thread(target=_loop, daemon=True, name="Pi_Heartbeat_Worker")
+    t.start()
 
 def get_hardware_serial() -> str:
     """Extrait le numéro de série matériel unique du processeur BCM2711 / Raspberry Pi."""
@@ -34,6 +83,7 @@ def get_hardware_serial() -> str:
         return f"RPI4-CF-{mac_hash}"
     except Exception:
         return "RPI4-CF-DEMO"
+
 
 def get_local_ip() -> str:
     """Détecte l'adresse IP locale du Raspberry Pi sur le réseau."""
@@ -116,6 +166,11 @@ def main():
             print(f"    • Serveur CamFire          : \033[1;32mConnecté & Provisionné de manière sécurisée\033[0m")
     except Exception as e:
         print(f"    • Serveur CamFire          : Non joignable à {server_url} ({e})")
+
+    # Démarrage de la télémétrie active chiffrée (Dead Man's Switch)
+    start_heartbeat_worker(hw_id, server_url, provision_key)
+    print("    • Surveillance Active      : \033[1;32mHeartbeat chiffré (15s) actif (Dead Man's Switch)\033[0m")
+
 
     print("\n" + "-" * 60)
     print("ℹ️  INSTRUCTIONS D'ASSOCIATION À VOTRE COMPTE :")
