@@ -131,8 +131,8 @@ def process_image(image_bytes: bytes):
         save_capture_async("person", "warn", round(max_p_conf * 100, 1), "Scan Manuel", res_plotted)
     elif is_fire:
         confidence_percent = round(max_fire_conf * 100, 1)
-        print(f"[ALERTE INCENDIE] Détection feu/fumée (Analyse Image | Confiance max : {confidence_percent}%)")
-        save_capture_async("fire", "fire", confidence_percent, "Scan Manuel", res_plotted)
+        print(f"[ALERTE FUMÉE] Détection de fumée (Analyse Image | Confiance max : {confidence_percent}%)")
+        save_capture_async("smoke", "fire", confidence_percent, "Scan Manuel (Fumée)", res_plotted)
     else:
         print(f"[SURVEILLANCE] Surveillance normale (Aucune détection)")
     
@@ -394,11 +394,11 @@ def _ai_worker_loop():
                     for (bx1, by1, bx2, by2, blabel, bcolor) in new_boxes:
                         cv2.rectangle(snap_frame, (bx1, by1), (bx2, by2), bcolor, 2)
                         cv2.putText(snap_frame, blabel, (bx1, max(20, by1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, bcolor, 2)
-                    save_capture_async("fire", "fire", confidence, "Raspberry 4 (Feu)", snap_frame)
+                    save_capture_async("smoke", "fire", confidence, "Raspberry 4 (Fumée)", snap_frame)
 
                 latest_detection["fire"] = True
                 latest_detection["fire_ts"] = now
-                print(f"[VIDEO] ALERTE : Feu/Fumée confirmée ! (Confiance max : {confidence}%)")
+                print(f"[VIDEO] ALERTE : Fumée confirmée ! (Confiance max : {confidence}%)")
             else:
                 if now - latest_detection.get("fire_ts", 0) > 4.0:
                     latest_detection["fire"] = False

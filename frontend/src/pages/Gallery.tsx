@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useMedia, hashFile } from '../context/MediaContext';
 import { FireAlertModal } from '../components/FireAlertModal';
-import { UploadIcon, XIcon, CheckCircleIcon, WarningIcon, ClockIcon, FlameIcon, CameraIcon, UserIcon, FolderIcon } from '../components/icons';
+import { UploadIcon, XIcon, CheckCircleIcon, WarningIcon, ClockIcon, SmokeIcon, CameraIcon, UserIcon, FolderIcon } from '../components/icons';
 import { captureService, type CaptureItem } from '../services/captureService';
 import { scanService } from '../services/scanService';
 import './Gallery.css';
@@ -203,6 +203,7 @@ export const Gallery: React.FC = () => {
   // Filtrer les captures réelles
   const filteredDbCaptures = dbCaptures.filter((c) => {
     if (filterType === 'all') return true;
+    if (filterType === 'fire') return c.detection_type === 'fire' || c.detection_type === 'smoke';
     return c.detection_type === filterType;
   });
 
@@ -323,8 +324,8 @@ export const Gallery: React.FC = () => {
           onClick={() => setFilterType('fire')}
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-            <FlameIcon size={12} />
-            FEU ({dbCaptures.filter(c => c.detection_type === 'fire').length})
+            <SmokeIcon size={12} />
+            FUMÉE ({dbCaptures.filter(c => c.detection_type === 'fire' || c.detection_type === 'smoke').length})
           </span>
         </button>
         <button 
@@ -383,21 +384,21 @@ export const Gallery: React.FC = () => {
           </div>
           <strong style={{ color: '#fff', display: 'block', marginBottom: '4px' }}>Aucune capture pour le moment</strong>
           <span style={{ fontSize: '12px' }}>
-            Dès qu'une personne ou un feu est détecté par le Raspberry Pi, la photo prise apparaîtra ici automatiquement.
+            Dès qu'une personne ou de la fumée est détectée par le Raspberry Pi, la photo prise apparaîtra ici automatiquement.
           </span>
         </div>
       ) : (
         <div className="gallery-grid">
           {filteredDbCaptures.map((c) => {
             const isPerson = c.detection_type === 'person';
-            const isFire = c.detection_type === 'fire';
+            const isFire = c.detection_type === 'fire' || c.detection_type === 'smoke';
             const dateObj = new Date(c.created_at);
             const timeStr = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
             const dateStr = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 
             const badgeClass = isFire ? 'badge-fire' : isPerson ? 'badge-warn' : 'badge-safe';
-            const badgeLabel = isFire ? 'FEU DÉTECTÉ' : isPerson ? 'PERSONNE DÉTECTÉE' : 'SÛR';
-            const IconComponent = isFire ? WarningIcon : isPerson ? WarningIcon : CheckCircleIcon;
+            const badgeLabel = isFire ? 'FUMÉE DÉTECTÉE' : isPerson ? 'PERSONNE DÉTECTÉE' : 'SÛR';
+            const IconComponent = isFire ? SmokeIcon : isPerson ? WarningIcon : CheckCircleIcon;
 
             return (
               <div

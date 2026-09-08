@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FlameIcon, WarningIcon, ChevronRightIcon, CameraIcon } from '../components/icons';
+import { SmokeIcon, WarningIcon, ChevronRightIcon } from '../components/icons';
 import { FireAlertModal, type AlertRecord } from '../components/FireAlertModal';
 import './Alerts.css';
 
@@ -30,6 +30,7 @@ export const Alerts: React.FC = () => {
 
             return {
               ...alert,
+              location: (alert.location || '').replace(/\(Feu\)/g, '(Fumée)'),
               date: formattedDate,
               image_url: fullImageUrl,
             };
@@ -62,14 +63,14 @@ export const Alerts: React.FC = () => {
           {alerts.map((rec) => (
             <button className="alert-row" key={rec.id} onClick={() => setActive(rec)}>
               <div className={`alert-row-icon ${rec.status === 'fire' ? 'badge-fire' : 'badge-warn'}`}>
-                {rec.status === 'fire' ? <FlameIcon size={18} /> : <WarningIcon size={18} />}
+                {rec.status === 'fire' ? <SmokeIcon size={18} /> : <WarningIcon size={18} />}
               </div>
               <div className="alert-row-content">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <strong>{rec.location}</strong>
                   {rec.image_url && (
-                    <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <CameraIcon size={11} /> Photo
+                    <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                      Photo
                     </span>
                   )}
                 </div>

@@ -23,7 +23,10 @@ def get_captures(
     """Récupère l'ensemble des vraies captures photo enregistrées par l'IA et l'utilisateur."""
     query = db.query(Capture)
     if detection_type:
-        query = query.filter(Capture.detection_type == detection_type)
+        if detection_type in ("fire", "smoke"):
+            query = query.filter(Capture.detection_type.in_(["fire", "smoke"]))
+        else:
+            query = query.filter(Capture.detection_type == detection_type)
     captures = query.order_by(Capture.created_at.desc()).limit(limit).all()
     return captures
 
