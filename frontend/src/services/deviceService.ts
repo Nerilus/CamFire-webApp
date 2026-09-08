@@ -10,8 +10,11 @@ export interface Device {
   last_seen_at?: string;
   lat?: number;
   lng?: number;
-  status: 'online' | 'offline';
+  status: 'online' | 'offline' | 'tampered';
+  tamper_status?: 'normal' | 'tampered' | 'signal_lost';
+  cpu_temp?: number;
 }
+
 
 export interface DeviceMember {
   user_id: number;

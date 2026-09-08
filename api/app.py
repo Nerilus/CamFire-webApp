@@ -5,19 +5,68 @@ from fastapi.middleware.cors import CORSMiddleware
 from db.database import engine, Base
 from routers import auth, contacts, scan, weather, alerts, devices, sites, captures
 
+import threading
+import time
+from datetime import datetime, timedelta
 from sqlalchemy import text
 
 # Génère les tables si elles n'existent pas encore
 Base.metadata.create_all(bind=engine)
 
-# Migration automatique pour les colonnes de sécurité
+# Migration automatique pour les colonnes de sécurité & Dead Man's Switch
 try:
     with engine.connect() as conn:
         conn.execute(text("ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS role VARCHAR DEFAULT 'owner';"))
         conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS code_expires_at TIMESTAMP;"))
+        conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS tamper_status VARCHAR DEFAULT 'normal';"))
+        conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS cpu_temp FLOAT;"))
+        conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_tamper_alert_at TIMESTAMP;"))
         conn.commit()
 except Exception as e:
     print(f"[MIGRATION WARNING] {e}")
+
+# Daemon Dead Man's Switch : Surveillance active des coupures brutales (Anti-Pyromane / Sabotage)
+def _dead_man_switch_loop():
+    time.sleep(10) # Attente initialisation complète
+    while True:
+        try:
+            time.sleep(15)
+            from db.database import SessionLocal
+            from db.models import Device, Alert
+            db = SessionLocal()
+            try:
+                now = datetime.utcnow()
+                paired_devices = db.query(Device).filter(Device.is_paired == True).all()
+                for dev in paired_devices:
+                    if dev.last_seen_at is None:
+                        continue
+                    silence_duration = (now - dev.last_seen_at).total_seconds()
+                    # Si aucun signal reçu depuis > 45 secondes
+                    if silence_duration > 45:
+                        cooldown = (now - dev.last_tamper_alert_at).total_seconds() if dev.last_tamper_alert_at else 9999
+                        if cooldown > 900: # 15 minutes entre chaque alerte pour éviter le spam
+                            dev.tamper_status = "signal_lost"
+                            dev.last_tamper_alert_at = now
+                            alert = Alert(
+                                status="warn",
+                                location=f"{dev.name} — COUPURE DE SIGNAL (Dead Man's Switch)",
+                                coords=f"{dev.lat}°N {dev.lng}°E",
+                                confidence=95.0,
+                                detection_type="tamper",
+                                date=now
+                            )
+                            db.add(alert)
+                            db.commit()
+                            print(f"🚨 [DEAD MAN'S SWITCH] Alerte : {dev.name} ({dev.device_id}) silencieux depuis {int(silence_duration)}s !")
+            except Exception as err:
+                print(f"[DEAD MAN'S SWITCH DB ERROR] {err}")
+            finally:
+                db.close()
+        except Exception as ge:
+            print(f"[DEAD MAN'S SWITCH WORKER ERROR] {ge}")
+
+threading.Thread(target=_dead_man_switch_loop, daemon=True, name="DeadManSwitch_Worker").start()
+
 
 
 # Création du dossier statique pour les captures de photos

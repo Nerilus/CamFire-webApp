@@ -7,6 +7,8 @@ import threading
 import time
 import secrets
 import urllib.parse
+import hmac
+import hashlib
 import jwt
 
 from db.database import get_db
@@ -17,6 +19,7 @@ from schemas.device_schema import (
     DeviceUnpairRequest,
     DeviceProvisionRequest,
     DeviceMemberResponse,
+    DeviceHeartbeatRequest,
     StreamTicketResponse,
     RefreshCodeResponse
 )
@@ -29,6 +32,7 @@ router = APIRouter(
     prefix="/devices",
     tags=["Secure Devices & Raspberry Pi"]
 )
+
 
 # ---------------------------------------------------------------------------
 # 1. Protection Anti-Brute-Force & Verrouillage Temporaire (In-Memory)
@@ -216,11 +220,17 @@ def provision_device(
 # ---------------------------------------------------------------------------
 @router.get("/my", response_model=List[DeviceResponse])
 def get_my_devices(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Retourne la liste des Raspberry Pi liés au compte de l'utilisateur connecté avec leur rôle."""
+    """Retourne la liste des Raspberry Pi liés au compte de l'utilisateur connecté avec leur rôle et statut réel."""
     user_devs = db.query(UserDevice).filter(UserDevice.user_id == current_user.id).all()
     results = []
+    now = datetime.utcnow()
     for ud in user_devs:
         dev = ud.device
+        is_recent = dev.last_seen_at and (now - dev.last_seen_at).total_seconds() < 45
+        status_val = "online" if is_recent else "offline"
+        if dev.tamper_status == "tampered":
+            status_val = "tampered"
+
         results.append(DeviceResponse(
             id=dev.id,
             device_id=dev.device_id,
@@ -231,9 +241,98 @@ def get_my_devices(current_user: User = Depends(get_current_user), db: Session =
             last_seen_at=dev.last_seen_at,
             lat=dev.lat,
             lng=dev.lng,
-            status="online"
+            status=status_val,
+            tamper_status=dev.tamper_status or "normal",
+            cpu_temp=dev.cpu_temp
         ))
     return results
+
+
+# ---------------------------------------------------------------------------
+# 6.b Endpoint Heartbeat Sécurisé & Anti-Rejeu (Agent Raspberry Pi)
+# ---------------------------------------------------------------------------
+_seen_heartbeat_nonces = {} # key: (device_id, nonce) -> timestamp
+_lock_heartbeat_nonces = threading.Lock()
+
+@router.post("/{device_id}/heartbeat")
+def device_heartbeat(
+    device_id: str,
+    req: DeviceHeartbeatRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Heartbeat sécurisé émis par l'agent Raspberry Pi (Dead Man's Switch) :
+    1. Contrôle strict de la dérive d'horloge (< 60 secondes).
+    2. Protection anti-rejeu par Nonce à usage unique (Replay Attack Protection).
+    3. Vérification de la signature cryptographique HMAC-SHA256 (clé d'usine).
+    4. Détection immédiate de coupure ou de sabotage physique (Tamper Switch).
+    """
+    now = time.time()
+    # 1. Vérification dérive temporelle
+    if abs(now - req.timestamp) > 60:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Horodatage expiré ou désynchronisé (dérive temporelle > 60s). Rejet anti-rejeu."
+        )
+
+    # 2. Vérification anti-rejeu du nonce
+    nonce_key = f"{device_id}:{req.nonce}"
+    with _lock_heartbeat_nonces:
+        expired_keys = [k for k, ts in _seen_heartbeat_nonces.items() if now - ts > 300]
+        for k in expired_keys:
+            del _seen_heartbeat_nonces[k]
+        if nonce_key in _seen_heartbeat_nonces:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Attaque par rejeu détectée : ce nonce de transmission a déjà été consommé."
+            )
+        _seen_heartbeat_nonces[nonce_key] = now
+
+    # 3. Vérification de la signature HMAC-SHA256
+    payload = f"{device_id}:{req.timestamp}:{req.nonce}:{req.tamper_detected}".encode("utf-8")
+    expected_sig = hmac.new(DEVICE_PROVISION_KEY.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(req.signature, expected_sig):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Signature cryptographique invalide. Signal rejeté (tentative d'usurpation ou de falsification)."
+        )
+
+    # 4. Enregistrement de la télémétrie en BDD
+    dev = db.query(Device).filter(Device.device_id == device_id.strip()).first()
+    if not dev:
+        raise HTTPException(status_code=404, detail="Appareil introuvable.")
+
+    now_dt = datetime.utcnow()
+    dev.last_seen_at = now_dt
+    if req.cpu_temp is not None:
+        dev.cpu_temp = req.cpu_temp
+
+    # 5. Gestion du sabotage physique (Tamper Switch)
+    if req.tamper_detected:
+        dev.tamper_status = "tampered"
+        from db.models import Alert
+        tamper_alert = Alert(
+            status="warn",
+            location=f"{dev.name} — SABOTAGE PHYSIQUE DÉTECTÉ (Capteur Tamper)",
+            confidence=99.0,
+            coords=f"{dev.lat}°N {dev.lng}°E",
+            detection_type="tamper",
+            date=now_dt
+        )
+        db.add(tamper_alert)
+        print(f"🚨 [SÉCURITÉ PHYSIQUE] Alerte sabotage levée sur {device_id} !")
+    elif dev.tamper_status == "signal_lost":
+        dev.tamper_status = "normal"
+
+    db.commit()
+    return {
+        "status": "acknowledged",
+        "device_id": device_id,
+        "tamper_status": dev.tamper_status,
+        "cpu_temp": dev.cpu_temp,
+        "server_time": now
+    }
 
 
 @router.post("/pair", response_model=DeviceResponse)
@@ -315,8 +414,11 @@ def pair_device(
         last_seen_at=device.last_seen_at,
         lat=device.lat,
         lng=device.lng,
-        status="online"
+        status="online",
+        tamper_status=device.tamper_status or "normal",
+        cpu_temp=device.cpu_temp
     )
+
 
 
 @router.post("/unpair/{device_id}")

@@ -16,6 +16,13 @@ class DeviceProvisionRequest(BaseModel):
 class DeviceUnpairRequest(BaseModel):
     password: str
 
+class DeviceHeartbeatRequest(BaseModel):
+    timestamp: float
+    nonce: str
+    cpu_temp: Optional[float] = None
+    tamper_detected: bool = False
+    signature: str
+
 class DeviceResponse(BaseModel):
     id: int
     device_id: str
@@ -27,9 +34,12 @@ class DeviceResponse(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     status: str = "online"
+    tamper_status: Optional[str] = "normal"
+    cpu_temp: Optional[float] = None
 
     class Config:
         from_attributes = True
+
 
 class DeviceMemberResponse(BaseModel):
     user_id: int
