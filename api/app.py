@@ -57,7 +57,7 @@ def _dead_man_switch_loop():
                             )
                             db.add(alert)
                             db.commit()
-                            print(f"🚨 [DEAD MAN'S SWITCH] Alerte : {dev.name} ({dev.device_id}) silencieux depuis {int(silence_duration)}s !")
+                            print(f"[DEAD MAN'S SWITCH] Alerte securite : {dev.name} ({dev.device_id}) silencieux depuis {int(silence_duration)}s")
             except Exception as err:
                 print(f"[DEAD MAN'S SWITCH DB ERROR] {err}")
             finally:

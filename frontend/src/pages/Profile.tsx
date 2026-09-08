@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { deviceService, type Device } from '../services/deviceService';
-import { SettingsIcon } from '../components/icons';
+import { SettingsIcon, RadioIcon } from '../components/icons';
 import './Profile.css';
 
 export const Profile: React.FC = () => {
@@ -144,7 +144,10 @@ export const Profile: React.FC = () => {
               <div key={dev.id} className="device-card">
                 <div className="device-card-header">
                   <div>
-                    <h3 className="device-title">🔥 {dev.name}</h3>
+                    <h3 className="device-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <RadioIcon size={16} />
+                      {dev.name}
+                    </h3>
                     <span className="device-id-badge">{dev.device_id}</span>
                   </div>
                   <span className="device-status-badge">● Connecté (Sécurisé)</span>

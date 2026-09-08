@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { XIcon, MaximizeIcon, MinimizeIcon, CameraIcon } from './icons';
+import { XIcon, MaximizeIcon, MinimizeIcon, CameraIcon, LockIcon } from './icons';
 import './VideoModal.css';
 
 interface VideoModalProps {
@@ -15,7 +15,7 @@ export const VideoModal: React.FC<VideoModalProps> = ({
   onClose,
   streamUrl,
   cameraName = 'Caméra de Surveillance',
-  statusText = 'Analyse IA YOLO active',
+  statusText = 'Surveillance continue active',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -102,7 +102,9 @@ export const VideoModal: React.FC<VideoModalProps> = ({
             />
           ) : (
             <div style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🔒</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', color: '#f87171' }}>
+                <LockIcon size={36} />
+              </div>
               <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc' }}>Flux vidéo indisponible</div>
               <p style={{ fontSize: '13px', marginTop: '6px' }}>Aucun appareil connecté à votre compte.</p>
             </div>

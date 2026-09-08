@@ -131,10 +131,10 @@ def process_image(image_bytes: bytes):
         save_capture_async("person", "warn", round(max_p_conf * 100, 1), "Scan Manuel", res_plotted)
     elif is_fire:
         confidence_percent = round(max_fire_conf * 100, 1)
-        print(f"🔥 ALERTE : Il y a le feu ! (Analyse Image | Confiance max : {confidence_percent}%)")
+        print(f"[ALERTE INCENDIE] Détection feu/fumée (Analyse Image | Confiance max : {confidence_percent}%)")
         save_capture_async("fire", "fire", confidence_percent, "Scan Manuel", res_plotted)
     else:
-        print(f"🟢 RAS - Surveillance normale (Aucune détection)")
+        print(f"[SURVEILLANCE] Surveillance normale (Aucune détection)")
     
     # Encoder l'image en JPEG
     success, encoded_img = cv2.imencode('.jpg', res_plotted)
@@ -228,7 +228,7 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                 )
                 db.add(alert)
                 db.commit()
-                print(f"📸 [PHOTO ENREGISTRÉE] {filename} -> Type: {detection_type.upper()} ({confidence}%) à {location}")
+                print(f"[CAPTURE] Snapshot enregistrée: {filename} -> Type: {detection_type.upper()} ({confidence}%) à {location}")
             except Exception as dbe:
                 print(f"Erreur DB Capture: {dbe}")
             finally:
@@ -398,7 +398,7 @@ def _ai_worker_loop():
 
                 latest_detection["fire"] = True
                 latest_detection["fire_ts"] = now
-                print(f"[VIDEO] 🔥 ALERTE : Feu/Fumée confirmée ! (Confiance max : {confidence}%)")
+                print(f"[VIDEO] ALERTE : Feu/Fumée confirmée ! (Confiance max : {confidence}%)")
             else:
                 if now - latest_detection.get("fire_ts", 0) > 4.0:
                     latest_detection["fire"] = False
@@ -419,14 +419,14 @@ def _ai_worker_loop():
 
                 latest_detection["person"] = True
                 latest_detection["person_ts"] = now
-                print(f"[VIDEO] 👤 INTRUSION : Personne détectée ! (Confiance max : {confidence}%)")
+                print(f"[VIDEO] INTRUSION : Personne détectée ! (Confiance max : {confidence}%)")
             else:
                 if now - latest_detection.get("person_ts", 0) > 4.0:
                     latest_detection["person"] = False
 
             if not fire_detected and not person_detected:
                 if now - last_ras_log > 8.0:
-                    print("[IA WORKER] 🟢 Surveillance active (Analyse fluide en arrière-plan)")
+                    print("[SURVEILLANCE] Surveillance active en arrière-plan")
                     last_ras_log = now
 
             time.sleep(0.03)

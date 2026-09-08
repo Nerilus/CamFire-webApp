@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useMedia, hashFile } from '../context/MediaContext';
 import { FireAlertModal } from '../components/FireAlertModal';
-import { UploadIcon, XIcon, CheckCircleIcon, WarningIcon, ClockIcon } from '../components/icons';
+import { UploadIcon, XIcon, CheckCircleIcon, WarningIcon, ClockIcon, FlameIcon, CameraIcon, UserIcon, FolderIcon } from '../components/icons';
 import { captureService, type CaptureItem } from '../services/captureService';
 import { scanService } from '../services/scanService';
 import './Gallery.css';
@@ -313,19 +313,28 @@ export const Gallery: React.FC = () => {
           className={`history-filter ${filterType === 'person' ? 'active' : ''}`}
           onClick={() => setFilterType('person')}
         >
-          👤 PERSONNES ({dbCaptures.filter(c => c.detection_type === 'person').length})
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <UserIcon size={12} />
+            PERSONNES ({dbCaptures.filter(c => c.detection_type === 'person').length})
+          </span>
         </button>
         <button 
           className={`history-filter ${filterType === 'fire' ? 'active' : ''}`}
           onClick={() => setFilterType('fire')}
         >
-          🔥 FEU ({dbCaptures.filter(c => c.detection_type === 'fire').length})
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <FlameIcon size={12} />
+            FEU ({dbCaptures.filter(c => c.detection_type === 'fire').length})
+          </span>
         </button>
         <button 
           className={`history-filter ${filterType === 'manual' ? 'active' : ''}`}
           onClick={() => setFilterType('manual')}
         >
-          📁 MANUELLES ({dbCaptures.filter(c => c.detection_type === 'manual').length})
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <FolderIcon size={12} />
+            MANUELLES ({dbCaptures.filter(c => c.detection_type === 'manual').length})
+          </span>
         </button>
       </div>
 
@@ -369,7 +378,9 @@ export const Gallery: React.FC = () => {
           borderRadius: '16px',
           color: 'var(--text-faint)' 
         }}>
-          <div style={{ fontSize: '28px', marginBottom: '8px' }}>📷</div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px', color: 'var(--text-faint)' }}>
+            <CameraIcon size={32} />
+          </div>
           <strong style={{ color: '#fff', display: 'block', marginBottom: '4px' }}>Aucune capture pour le moment</strong>
           <span style={{ fontSize: '12px' }}>
             Dès qu'une personne ou un feu est détecté par le Raspberry Pi, la photo prise apparaîtra ici automatiquement.

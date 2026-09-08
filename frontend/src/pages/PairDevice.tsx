@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { deviceService } from '../services/deviceService';
+import { RadioIcon } from '../components/icons';
 
 interface PairDeviceProps {
   onComplete?: () => void;
@@ -53,7 +54,7 @@ export const PairDevice: React.FC<PairDeviceProps> = ({ onComplete }) => {
         {/* En-tête */}
         <div style={styles.header}>
           <div style={styles.logoContainer}>
-            <span style={styles.logoIcon}>📡</span>
+            <RadioIcon size={28} />
           </div>
           <h1 style={styles.title}>Lier votre Raspberry Pi</h1>
           <p style={styles.subtitle}>
@@ -166,6 +167,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderRadius: '50%',
     backgroundColor: 'rgba(56, 189, 248, 0.1)',
     border: '1px solid #38bdf8',
+    color: '#38bdf8',
     marginBottom: '14px',
   },
   logoIcon: {

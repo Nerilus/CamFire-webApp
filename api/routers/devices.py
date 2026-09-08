@@ -321,7 +321,7 @@ def device_heartbeat(
             date=now_dt
         )
         db.add(tamper_alert)
-        print(f"🚨 [SÉCURITÉ PHYSIQUE] Alerte sabotage levée sur {device_id} !")
+        print(f"[SECURITE PHYSIQUE] Alerte sabotage levee sur {device_id}")
     elif dev.tamper_status == "signal_lost":
         dev.tamper_status = "normal"
 
