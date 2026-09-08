@@ -4,13 +4,25 @@ export const authService = {
   /**
    * Inscription (Attend du JSON)
    */
-  async register(email: string, password: string): Promise<void> {
+  async register(
+    email: string, 
+    password: string, 
+    deviceData?: { pair_device: boolean; device_id: string; pairing_code: string; device_name?: string }
+  ): Promise<void> {
+    const payload: Record<string, any> = { email, password };
+    if (deviceData && deviceData.pair_device) {
+      payload.pair_device = true;
+      payload.device_id = deviceData.device_id;
+      payload.pairing_code = deviceData.pairing_code;
+      if (deviceData.device_name) payload.device_name = deviceData.device_name;
+    }
+
     const response = await fetch(`${API_URL}/auth/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -61,7 +73,10 @@ export const authService = {
     });
 
     if (!response.ok) {
-      localStorage.removeItem('token');
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        window.dispatchEvent(new Event('camfire_unauthorized'));
+      }
       throw new Error('Session expirée');
     }
 
@@ -70,6 +85,7 @@ export const authService = {
 
   logout(): void {
     localStorage.removeItem('token');
+    window.dispatchEvent(new Event('camfire_unauthorized'));
   },
 
   /**

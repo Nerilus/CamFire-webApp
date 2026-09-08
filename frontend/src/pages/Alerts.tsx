@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { FlameIcon, WarningIcon, ChevronRightIcon } from '../components/icons';
-import { FireAlertModal } from '../components/FireAlertModal';
-import type { ScanRecord } from '../services/mockData';
+import { FireAlertModal, type AlertRecord } from '../components/FireAlertModal';
 import './Alerts.css';
 
 export const Alerts: React.FC = () => {
-  const [active, setActive] = useState<ScanRecord | null>(null);
-  const [alerts, setAlerts] = useState<ScanRecord[]>([]);
+  const [active, setActive] = useState<AlertRecord | null>(null);
+  const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
-        const res = await fetch('http://localhost:8000/alerts/');
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const res = await fetch(`${apiUrl}/alerts/`);
         if (res.ok) {
           const data = await res.json();
           // Formater la date pour l'affichage (ex: 21 juillet 2026, 18:05)
@@ -22,9 +22,16 @@ export const Alerts: React.FC = () => {
               day: 'numeric', month: 'long', year: 'numeric',
               hour: '2-digit', minute: '2-digit'
             });
+
+            let fullImageUrl = alert.image_url;
+            if (fullImageUrl && !fullImageUrl.startsWith('http') && !fullImageUrl.startsWith('data:')) {
+              fullImageUrl = `${apiUrl}${fullImageUrl.startsWith('/') ? '' : '/'}${fullImageUrl}`;
+            }
+
             return {
               ...alert,
-              date: formattedDate
+              date: formattedDate,
+              image_url: fullImageUrl,
             };
           });
           setAlerts(formattedData);
@@ -36,6 +43,8 @@ export const Alerts: React.FC = () => {
       }
     };
     fetchAlerts();
+    const interval = setInterval(fetchAlerts, 6000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -56,7 +65,10 @@ export const Alerts: React.FC = () => {
                 {rec.status === 'fire' ? <FlameIcon size={18} /> : <WarningIcon size={18} />}
               </div>
               <div className="alert-row-content">
-                <strong>{rec.location}</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <strong>{rec.location}</strong>
+                  {rec.image_url && <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>📷 Photo</span>}
+                </div>
                 <span>{rec.date}</span>
               </div>
               <ChevronRightIcon size={18} className="alert-row-chevron" />
@@ -65,7 +77,14 @@ export const Alerts: React.FC = () => {
         </div>
       )}
 
-      {active && <FireAlertModal record={active} onClose={() => setActive(null)} />}
+      {active && (
+        <FireAlertModal 
+          record={active} 
+          onClose={() => setActive(null)} 
+          imageUrl={active.image_url} 
+          confidence={active.confidence} 
+        />
+      )}
     </div>
   );
 };

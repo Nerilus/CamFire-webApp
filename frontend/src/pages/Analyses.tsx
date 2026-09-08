@@ -1,26 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { fetchForecast, type ZoneForecast } from '../services/weatherService';
-import { cameras } from '../services/mockData';
+import { siteService, type Site } from '../services/siteService';
 import { FlameIcon } from '../components/icons';
 import './Analyses.css';
 
 export const Analyses: React.FC = () => {
   const [forecasts, setForecasts] = useState<ZoneForecast[]>([]);
-  const [selectedCamId, setSelectedCamId] = useState<string>('cam-1');
+  const [sites, setSites] = useState<Site[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
-      const data = await fetchForecast();
-      setForecasts(data);
-      setIsLoading(false);
+      try {
+        const [userSites, data] = await Promise.all([
+          siteService.getSites().catch(() => []),
+          fetchForecast().catch(() => [])
+        ]);
+        setSites(userSites);
+        if (userSites.length > 0) {
+          setSelectedSiteId(userSites[0].id);
+        }
+        setForecasts(data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
     };
     loadData();
   }, []);
 
-  const activeForecast = forecasts.find(f => f.id === selectedCamId)?.forecast || [];
+  const activeForecast = forecasts.length > 0 ? forecasts[0].forecast : [];
 
   // Format the data for recharts
   const chartData = activeForecast.map(f => {
@@ -36,7 +49,7 @@ export const Analyses: React.FC = () => {
     };
   });
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="custom-tooltip">
@@ -60,15 +73,21 @@ export const Analyses: React.FC = () => {
       </div>
 
       <div className="zone-selector">
-        {cameras.map(cam => (
-          <button 
-            key={cam.id} 
-            className={`zone-btn ${selectedCamId === cam.id ? 'active' : ''}`}
-            onClick={() => setSelectedCamId(cam.id)}
-          >
-            {cam.name}
+        {sites.length > 0 ? (
+          sites.map(s => (
+            <button 
+              key={s.id} 
+              className={`zone-btn ${selectedSiteId === s.id ? 'active' : ''}`}
+              onClick={() => setSelectedSiteId(s.id)}
+            >
+              {s.device ? '📡 ' : '📍 '}{s.name}
+            </button>
+          ))
+        ) : (
+          <button className="zone-btn active">
+            📡 Surveillance Active (Raspberry 4)
           </button>
-        ))}
+        )}
       </div>
 
       {isLoading ? (

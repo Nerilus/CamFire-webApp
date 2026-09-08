@@ -1,14 +1,17 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useMedia, hashFile } from '../context/MediaContext';
 import { FireAlertModal } from '../components/FireAlertModal';
-import { UploadIcon, FlameIcon, VideoIcon, XIcon, CheckCircleIcon, WarningIcon, ClockIcon } from '../components/icons';
-import { scanHistory } from '../services/mockData';
+import { UploadIcon, XIcon, CheckCircleIcon, WarningIcon, ClockIcon } from '../components/icons';
+import { captureService, type CaptureItem } from '../services/captureService';
 import { scanService } from '../services/scanService';
 import './Gallery.css';
 
 export const Gallery: React.FC = () => {
-  const { items, addMedia, updateMediaStatus, removeMedia } = useMedia();
+  const { items, addMedia, updateMediaStatus } = useMedia();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dbCaptures, setDbCaptures] = useState<CaptureItem[]>([]);
+  const [loadingCaptures, setLoadingCaptures] = useState(true);
+  const [filterType, setFilterType] = useState<string>('all');
   const [isDragOver, setIsDragOver] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(false);
@@ -18,7 +21,25 @@ export const Gallery: React.FC = () => {
   const [previewType, setPreviewType] = useState<'photo' | 'video' | null>(null);
   const [analysisData, setAnalysisData] = useState<{ fire_detected: boolean, confidence: number, gradcam_base64?: string | null } | null>(null);
   const [alreadyAnalyzed, setAlreadyAnalyzed] = useState(false);
-  const [alertImage, setAlertImage] = useState<{ url: string; confidence?: number } | null>(null);
+  const [alertImage, setAlertImage] = useState<{ url: string; confidence?: number; title?: string } | null>(null);
+
+  const loadCaptures = async () => {
+    try {
+      const caps = await captureService.getCaptures();
+      setDbCaptures(caps);
+    } catch (e) {
+      console.error('Erreur chargement captures:', e);
+    } finally {
+      setLoadingCaptures(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCaptures();
+    // Rafraîchissement périodique (toutes les 6 secondes) pour afficher les photos dès qu'une personne est détectée en direct
+    const interval = setInterval(loadCaptures, 6000);
+    return () => clearInterval(interval);
+  }, []);
 
   const mediaLabel = previewType === 'video' ? 'vidéo' : 'photo';
 
@@ -139,9 +160,17 @@ export const Gallery: React.FC = () => {
       }
       
       const res = await scanService.predictImage(finalFile);
-      setAnalysisData(res);
-      setResult(res.fire_detected);
-      if (mediaId) updateMediaStatus(mediaId, res.fire_detected ? 'fire' : 'safe', res.confidence);
+      const hasFire = res.detections && res.detections.some((d: any) => d.class !== 'person');
+      const maxConf = (res.detections && res.detections.length > 0)
+        ? Math.max(...res.detections.map((d: any) => d.confidence))
+        : 0;
+
+      setAnalysisData({ fire_detected: hasFire, confidence: maxConf, gradcam_base64: res.image_base64 });
+      setResult(hasFire);
+      if (mediaId) updateMediaStatus(mediaId, hasFire ? 'fire' : 'safe', maxConf);
+
+      // Recharger les captures réelles enregistrées sur le serveur
+      loadCaptures();
     } catch (err) {
       console.error(err);
       alert("Erreur lors de l'analyse par l'IA");
@@ -150,31 +179,37 @@ export const Gallery: React.FC = () => {
     }
   };
 
-  const recentStatusBadge: Record<string, { label: string; className: string; Icon: React.FC<{ size?: number }> }> = {
-    pending: { label: 'NON ANALYSÉE', className: 'badge-pending', Icon: ClockIcon },
-    fire: { label: 'DANGER', className: 'badge-fire', Icon: WarningIcon },
-    safe: { label: 'SÛR', className: 'badge-safe', Icon: CheckCircleIcon },
+  const handleDeleteDbCapture = async (id: number) => {
+    try {
+      const ok = await captureService.deleteCapture(id);
+      if (ok) {
+        setDbCaptures(prev => prev.filter(c => c.id !== id));
+      }
+    } catch (e) {
+      console.error('Erreur suppression capture:', e);
+    }
   };
 
-  const recentCaptures = items.map((m) => ({
-    key: m.id,
-    thumb: m.url,
-    isVideo: m.type === 'video',
-    status: m.status,
-    badge: recentStatusBadge[m.status].label,
-    badgeClass: recentStatusBadge[m.status].className,
-    BadgeIcon: recentStatusBadge[m.status].Icon,
-    time: new Date(m.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-    location: 'Nouvelle capture',
-    removable: true,
-    onRemove: () => removeMedia(m.id),
-    onView: () => setAlertImage({ url: m.url, confidence: m.confidence }),
-  }));
+  const handleClearAllCaptures = async () => {
+    if (!window.confirm("Voulez-vous supprimer toutes les captures enregistrées ?")) return;
+    try {
+      await Promise.all(dbCaptures.map(c => captureService.deleteCapture(c.id)));
+      setDbCaptures([]);
+    } catch (e) {
+      console.error('Erreur vidage captures:', e);
+    }
+  };
+
+  // Filtrer les captures réelles
+  const filteredDbCaptures = dbCaptures.filter((c) => {
+    if (filterType === 'all') return true;
+    return c.detection_type === filterType;
+  });
 
   return (
     <div className="page gallery-page">
       <div className="page-header">
-        <h1 className="page-title">IMPORTER UN MÉDIA</h1>
+        <h1 className="page-title">GALERIE DE SURVEILLANCE</h1>
       </div>
 
       <input
@@ -194,8 +229,8 @@ export const Gallery: React.FC = () => {
           onDrop={handleDrop}
         >
           <UploadIcon size={26} />
-          <strong>{isDragOver ? 'Déposez ici !' : 'Déposer ou appuyer pour importer une photo/vidéo'}</strong>
-          <span>JPEG · MP4 · MOV</span>
+          <strong>{isDragOver ? 'Déposez ici !' : 'Importer une photo / vidéo pour analyse IA'}</strong>
+          <span>JPEG · PNG · MP4 · MOV</span>
         </button>
       ) : (
         <div className={`gallery-preview-card${analyzing ? ' is-analyzing' : ''}${analysisData ? (analysisData.fire_detected ? ' is-danger' : ' is-safe') : ''}`}>
@@ -251,67 +286,162 @@ export const Gallery: React.FC = () => {
         </div>
       )}
 
+      {previewUrl && (
+        <button 
+          className="btn btn-flame gallery-analyze-btn" 
+          onClick={handleAnalyze} 
+          disabled={analyzing || !previewUrl || alreadyAnalyzed}
+          style={{ marginBottom: '24px' }}
+        >
+          {analyzing
+            ? 'ANALYSE EN COURS…'
+            : alreadyAnalyzed
+              ? 'DÉJÀ ANALYSÉE'
+              : `ANALYSER LA ${previewType === 'video' ? 'VIDÉO' : 'PHOTO'}`}
+        </button>
+      )}
+
+      {/* Onglets de filtrage des captures réelles */}
+      <div className="history-filters" style={{ marginBottom: '16px' }}>
+        <button 
+          className={`history-filter ${filterType === 'all' ? 'active' : ''}`}
+          onClick={() => setFilterType('all')}
+        >
+          TOUTES ({dbCaptures.length})
+        </button>
+        <button 
+          className={`history-filter ${filterType === 'person' ? 'active' : ''}`}
+          onClick={() => setFilterType('person')}
+        >
+          👤 PERSONNES ({dbCaptures.filter(c => c.detection_type === 'person').length})
+        </button>
+        <button 
+          className={`history-filter ${filterType === 'fire' ? 'active' : ''}`}
+          onClick={() => setFilterType('fire')}
+        >
+          🔥 FEU ({dbCaptures.filter(c => c.detection_type === 'fire').length})
+        </button>
+        <button 
+          className={`history-filter ${filterType === 'manual' ? 'active' : ''}`}
+          onClick={() => setFilterType('manual')}
+        >
+          📁 MANUELLES ({dbCaptures.filter(c => c.detection_type === 'manual').length})
+        </button>
+      </div>
+
       <div className="gallery-recent-header">
-        <span className="gallery-section-title">CAPTURES RÉCENTES</span>
-        <span className="gallery-count">{recentCaptures.length} élément{recentCaptures.length > 1 ? 's' : ''}</span>
+        <span className="gallery-section-title">PHOTOS & CAPTURES DÉTECTÉES EN TEMPS RÉEL</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span className="gallery-count">
+            {filteredDbCaptures.length} capture{filteredDbCaptures.length > 1 ? 's' : ''}
+          </span>
+          {filteredDbCaptures.length > 0 && (
+            <button
+              onClick={handleClearAllCaptures}
+              style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#f87171',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                cursor: 'pointer',
+                fontWeight: 600
+              }}
+              title="Vider toutes les captures"
+            >
+              Tout effacer
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="gallery-grid">
-        {recentCaptures.map((c) => (
-          <div
-            className={`gallery-card${c.status === 'fire' ? ' gallery-card-clickable' : ''}`}
-            key={c.key}
-            onClick={c.status === 'fire' ? c.onView : undefined}
-            role={c.status === 'fire' ? 'button' : undefined}
-            tabIndex={c.status === 'fire' ? 0 : undefined}
-          >
-            <div className="gallery-card-thumb">
-              {c.thumb ? (
-                c.isVideo ? <video src={c.thumb} muted playsInline /> : <img src={c.thumb} alt="Capture" />
-              ) : (
-                <FlameIcon size={22} className="gallery-card-placeholder" />
-              )}
-              {c.isVideo && (
-                <span className="gallery-video-badge">
-                  <VideoIcon size={12} />
+      {loadingCaptures ? (
+        <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-faint)' }}>
+          Chargement des captures de surveillance...
+        </div>
+      ) : filteredDbCaptures.length === 0 ? (
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '36px 20px', 
+          background: 'var(--surface)', 
+          border: '1px dashed var(--border)', 
+          borderRadius: '16px',
+          color: 'var(--text-faint)' 
+        }}>
+          <div style={{ fontSize: '28px', marginBottom: '8px' }}>📷</div>
+          <strong style={{ color: '#fff', display: 'block', marginBottom: '4px' }}>Aucune capture pour le moment</strong>
+          <span style={{ fontSize: '12px' }}>
+            Dès qu'une personne ou un feu est détecté par le Raspberry Pi, la photo prise apparaîtra ici automatiquement.
+          </span>
+        </div>
+      ) : (
+        <div className="gallery-grid">
+          {filteredDbCaptures.map((c) => {
+            const isPerson = c.detection_type === 'person';
+            const isFire = c.detection_type === 'fire';
+            const dateObj = new Date(c.created_at);
+            const timeStr = dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            const dateStr = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+
+            const badgeClass = isFire ? 'badge-fire' : isPerson ? 'badge-warn' : 'badge-safe';
+            const badgeLabel = isFire ? 'FEU DÉTECTÉ' : isPerson ? 'PERSONNE DÉTECTÉE' : 'SÛR';
+            const IconComponent = isFire ? WarningIcon : isPerson ? WarningIcon : CheckCircleIcon;
+
+            return (
+              <div
+                className="gallery-card gallery-card-clickable"
+                key={c.id}
+                onClick={() => setAlertImage({ 
+                  url: c.image_url, 
+                  confidence: c.confidence, 
+                  title: `${badgeLabel} (${c.location || 'Site'})` 
+                })}
+                role="button"
+                tabIndex={0}
+              >
+                <div className="gallery-card-thumb">
+                  <img src={c.image_url} alt={`Capture ${c.detection_type}`} loading="lazy" />
+                  <button
+                    className="gallery-card-remove"
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      handleDeleteDbCapture(c.id); 
+                    }}
+                    aria-label="Supprimer la capture"
+                    title="Supprimer définitivement cette photo"
+                  >
+                    <XIcon size={12} />
+                  </button>
+                </div>
+                <span className={`badge ${badgeClass} gallery-card-badge`}>
+                  <IconComponent size={11} />
+                  {badgeLabel} {c.confidence ? `${Math.round(c.confidence)}%` : ''}
                 </span>
-              )}
-              {c.removable && (
-                <button
-                  className="gallery-card-remove"
-                  onClick={(e) => { e.stopPropagation(); c.onRemove(); }}
-                  aria-label="Supprimer la capture"
-                >
-                  <XIcon size={12} />
-                </button>
-              )}
-            </div>
-            <span className={`badge ${c.badgeClass} gallery-card-badge`}>
-              <c.BadgeIcon size={11} />
-              {c.badge}
-            </span>
-            <div className="gallery-card-meta">
-              <strong>{c.time}</strong>
-              <span>{c.location}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+                <div className="gallery-card-meta">
+                  <strong>{dateStr} à {timeStr}</strong>
+                  <span>{c.location || 'Raspberry 4'}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      <button className="btn btn-flame gallery-analyze-btn" onClick={handleAnalyze} disabled={analyzing || !previewUrl || alreadyAnalyzed}>
-        {analyzing
-          ? 'ANALYSE EN COURS…'
-          : alreadyAnalyzed
-            ? 'DÉJÀ ANALYSÉE'
-            : `ANALYSER LA ${previewType === 'video' ? 'VIDÉO' : 'PHOTO'}`}
-      </button>
-
+      {/* Modal d'aperçu d'alerte / preuve photo */}
       {(result || alertImage) && (
         <FireAlertModal
-          record={scanHistory[0]}
+          record={{
+            id: 'real-alert',
+            status: alertImage?.title?.includes('FEU') ? 'fire' : 'warn',
+            location: alertImage?.title || 'Surveillance CamFire - Détection IA',
+            date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+            coords: '46.2276°N 2.2137°E',
+            confidence: alertImage?.confidence ? Math.round(alertImage.confidence) : 90
+          }}
           onClose={() => { setResult(false); setAlertImage(null); }}
           imageUrl={(alertImage ? alertImage.url : analysisData?.gradcam_base64) || null}
-          confidence={alertImage ? alertImage.confidence : analysisData?.confidence}
+          confidence={alertImage?.confidence ? (alertImage.confidence > 1 ? alertImage.confidence / 100 : alertImage.confidence) : analysisData?.confidence}
         />
       )}
     </div>

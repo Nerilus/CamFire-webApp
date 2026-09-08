@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any
-from db.models import User
+from sqlalchemy.orm import Session
+from db.database import get_db
+from db.models import User, UserDevice
 from routers.auth import get_current_user
+from routers.devices import get_user_from_token_or_header
 from services.predict import process_image, generate_video_stream
+
+from core.config import CAMERA_URL
 
 router = APIRouter(
     prefix="/scan",
@@ -11,10 +16,20 @@ router = APIRouter(
 )
 
 @router.get("/stream")
-async def stream_camera():
-    camera_url = "http://root:root@192.168.1.90/axis-cgi/mjpg/video.cgi"
+async def stream_camera(
+    user: User = Depends(get_user_from_token_or_header),
+    db: Session = Depends(get_db)
+):
+    """Flux vidéo sécurisé : interdit si aucun appareil n'est connecté au compte."""
+    user_device = db.query(UserDevice).filter(UserDevice.user_id == user.id).first()
+    if not user_device or not user_device.device:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès interdit : aucun appareil n'est connecté à votre compte."
+        )
+    target_url = user_device.device.stream_url or CAMERA_URL
     return StreamingResponse(
-        generate_video_stream(camera_url),
+        generate_video_stream(target_url),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 

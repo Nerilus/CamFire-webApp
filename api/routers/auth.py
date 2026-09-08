@@ -37,8 +37,31 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+from datetime import datetime
+from db.models import User, Device, UserDevice
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
+    device = None
+    if user_in.pair_device:
+        if not user_in.device_id or not user_in.pairing_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="L'identifiant matériel et le code secret d'appairage sont requis pour lier un appareil."
+            )
+        device = db.query(Device).filter(Device.device_id == user_in.device_id.strip()).first()
+        if not device:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Matériel '{user_in.device_id}' introuvable. Vérifiez l'ID matériel ou lancez le script agent sur le Raspberry Pi."
+            )
+        # Un même appareil physique peut être lié à plusieurs comptes avec son code secret
+        if not verify_password(user_in.pairing_code.strip(), device.hashed_pairing_code):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Code secret d'appairage incorrect pour ce Raspberry Pi."
+            )
+
     user = db.query(User).filter(User.email == user_in.email).first()
     if user:
         raise HTTPException(
@@ -50,6 +73,20 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    if device:
+        custom_name = user_in.device_name.strip() if user_in.device_name else device.name
+        new_ud = UserDevice(
+            user_id=new_user.id,
+            device_id=device.id,
+            custom_name=custom_name,
+            paired_at=datetime.utcnow()
+        )
+        db.add(new_ud)
+        device.is_paired = True
+        db.commit()
+        db.refresh(new_user)
+
     return new_user
 
 @router.post("/login", response_model=Token)

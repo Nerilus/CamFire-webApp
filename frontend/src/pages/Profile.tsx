@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
+import { deviceService, type Device } from '../services/deviceService';
 import { SettingsIcon } from '../components/icons';
 import './Profile.css';
 
@@ -18,8 +19,19 @@ export const Profile: React.FC = () => {
   const [pwdMsg, setPwdMsg] = useState({ type: '', text: '' });
   const [loadingPwd, setLoadingPwd] = useState(false);
 
+  // Appareils Raspberry Pi
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [deviceMsg, setDeviceMsg] = useState({ type: '', text: '' });
+
+  // Modal dissociation sécurisée
+  const [showUnpairModal, setShowUnpairModal] = useState(false);
+  const [targetUnpairDeviceId, setTargetUnpairDeviceId] = useState('');
+  const [unpairPassword, setUnpairPassword] = useState('');
+  const [isUnpairing, setIsUnpairing] = useState(false);
+
   useEffect(() => {
     loadUserProfile();
+    loadDevices();
   }, []);
 
   const loadUserProfile = async () => {
@@ -28,6 +40,15 @@ export const Profile: React.FC = () => {
       setFirstname(user.firstname || '');
       setLastname(user.lastname || '');
       setEmail(user.email || '');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadDevices = async () => {
+    try {
+      const devs = await deviceService.getMyDevices();
+      setDevices(devs);
     } catch (e) {
       console.error(e);
     }
@@ -70,6 +91,30 @@ export const Profile: React.FC = () => {
     }
   };
 
+
+  const handleOpenUnpairModal = (devId: string) => {
+    setTargetUnpairDeviceId(devId);
+    setUnpairPassword('');
+    setShowUnpairModal(true);
+  };
+
+  const handleConfirmUnpair = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!unpairPassword) return;
+
+    setIsUnpairing(true);
+    try {
+      await deviceService.unpairDevice(targetUnpairDeviceId, unpairPassword);
+      setShowUnpairModal(false);
+      setDeviceMsg({ type: 'success', text: "L'appareil a été dissocié avec succès de votre compte." });
+      loadDevices();
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de la dissociation.");
+    } finally {
+      setIsUnpairing(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -83,6 +128,113 @@ export const Profile: React.FC = () => {
         </button>
       </div>
 
+      {/* Section Appareils Raspberry Pi Liés */}
+      <section className="profile-section">
+        <h2 className="profile-section-title">MES ÉQUIPEMENTS RASPBERRY PI 4</h2>
+        
+        {deviceMsg.text && (
+          <div className={`profile-msg ${deviceMsg.type}`} style={{ marginBottom: '16px' }}>
+            {deviceMsg.text}
+          </div>
+        )}
+
+        {devices.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {devices.map((dev) => (
+              <div key={dev.id} className="device-card">
+                <div className="device-card-header">
+                  <div>
+                    <h3 className="device-title">🔥 {dev.name}</h3>
+                    <span className="device-id-badge">{dev.device_id}</span>
+                  </div>
+                  <span className="device-status-badge">● Connecté (Sécurisé)</span>
+                </div>
+
+                <div className="device-details-row">
+                  <span>Protocole : <strong>Chiffrement propriétaire</strong></span>
+                  <span>Lié le : {dev.paired_at ? new Date(dev.paired_at).toLocaleDateString('fr-FR') : 'Récemment'}</span>
+                </div>
+
+                <button 
+                  type="button" 
+                  className="device-unpair-btn"
+                  onClick={() => handleOpenUnpairModal(dev.device_id)}
+                >
+                  Dissocier cet appareil
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div>
+            <div className="device-empty-state">
+              Aucun Raspberry Pi n'est actuellement lié à votre compte.
+            </div>
+
+            <button 
+              type="button" 
+              className="btn" 
+              style={{ marginTop: '16px', width: '100%' }}
+              onClick={() => navigate('/pair')}
+            >
+              + Lier mon Raspberry Pi
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Modal Dissociation avec mot de passe */}
+      {showUnpairModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: '16px', padding: '24px', maxWidth: '400px', width: '100%',
+            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.6)'
+          }}>
+            <h3 style={{ color: '#fff', marginTop: 0 }}>Dissocier l'appareil ?</h3>
+            <p style={{ color: 'var(--text-dim)', fontSize: '13px', lineHeight: '1.4' }}>
+              Pour des raisons de sécurité, veuillez confirmer votre mot de passe pour dissocier l'appareil <strong>{targetUnpairDeviceId}</strong>.
+            </p>
+            <form onSubmit={handleConfirmUnpair} className="profile-form">
+              <div className="profile-form-group">
+                <label>Mot de passe du compte</label>
+                <input 
+                  type="password" 
+                  value={unpairPassword} 
+                  onChange={(e) => setUnpairPassword(e.target.value)} 
+                  placeholder="••••••••" 
+                  required 
+                  autoFocus
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-dark" 
+                  style={{ flex: 1 }} 
+                  onClick={() => setShowUnpairModal(false)}
+                >
+                  Annuler
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn" 
+                  style={{ flex: 1, background: '#ef4444' }} 
+                  disabled={isUnpairing}
+                >
+                  {isUnpairing ? 'En cours...' : 'Dissocier'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Section Informations Personnelles */}
       <section className="profile-section">
         <h2 className="profile-section-title">INFORMATIONS PERSONNELLES</h2>
         <form className="profile-form" onSubmit={handleUpdateProfile}>
@@ -119,8 +271,9 @@ export const Profile: React.FC = () => {
         </form>
       </section>
 
+      {/* Section Sécurité Mot de Passe */}
       <section className="profile-section">
-        <h2 className="profile-section-title">SÉCURITÉ</h2>
+        <h2 className="profile-section-title">SÉCURITÉ DU COMPTE</h2>
         <form className="profile-form" onSubmit={handleUpdatePassword}>
           <div className="profile-form-group">
             <label>Mot de passe actuel</label>
