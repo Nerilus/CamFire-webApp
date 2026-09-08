@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FlameIcon, WarningIcon, ChevronRightIcon } from '../components/icons';
+import { FlameIcon, WarningIcon, ChevronRightIcon, CameraIcon } from '../components/icons';
 import { FireAlertModal, type AlertRecord } from '../components/FireAlertModal';
 import './Alerts.css';
 
@@ -67,7 +67,11 @@ export const Alerts: React.FC = () => {
               <div className="alert-row-content">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <strong>{rec.location}</strong>
-                  {rec.image_url && <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>📷 Photo</span>}
+                  {rec.image_url && (
+                    <span style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <CameraIcon size={11} /> Photo
+                    </span>
+                  )}
                 </div>
                 <span>{rec.date}</span>
               </div>

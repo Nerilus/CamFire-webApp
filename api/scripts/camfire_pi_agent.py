@@ -103,8 +103,8 @@ def generate_pairing_code() -> str:
 
 def print_banner():
     print("=" * 60)
-    print("🔥  CAMFIRE - AGENT MATÉRIEL RASPBERRY PI 4")
-    print("    Système Intelligent de Télésurveillance Incendie")
+    print("    CAMFIRE - AGENT MATÉRIEL RASPBERRY PI 4")
+    print("    Système de Télésurveillance Incendie Sécurisé")
     print("=" * 60)
 
 def main():

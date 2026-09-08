@@ -137,7 +137,7 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
             onClick={(e) => { e.stopPropagation(); setShowFullImage(false); }}
             aria-label="Fermer"
           >
-            ✕
+            <XIcon size={20} />
           </button>
         </div>
       )}

@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FlameIcon, ChevronRightIcon, MapIcon, MaximizeIcon, GalleryIcon } from '../components/icons';
+import { 
+  FlameIcon, 
+  ChevronRightIcon, 
+  MapIcon, 
+  MaximizeIcon, 
+  GalleryIcon,
+  PinIcon,
+  RadioIcon,
+  LockIcon,
+  ThermometerIcon,
+  WindIcon,
+  DropletIcon,
+  ShieldAlertIcon
+} from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
 import { fetchZonesWeather, type WeatherZoneData, fetchForecast, type ZoneForecast } from '../services/weatherService';
 import { deviceService, type Device } from '../services/deviceService';
@@ -201,7 +214,9 @@ export const Home: React.FC = () => {
                 >
                   <div className="home-activity-info">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '15px' }}>{hasDevice ? '📡' : '📍'}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', color: hasDevice ? 'var(--safe)' : 'var(--text-faint)' }}>
+                        {hasDevice ? <RadioIcon size={15} /> : <PinIcon size={15} />}
+                      </span>
                       <strong style={{ fontSize: '14px', color: '#fff', letterSpacing: '-0.2px' }}>{s.name}</strong>
                       {hasDevice && (
                         <span style={{ 
@@ -223,8 +238,17 @@ export const Home: React.FC = () => {
                         : `Site enregistré • Rayon : ${s.radius}m • En attente de caméra`}
                     </span>
                     {w && (
-                      <span style={{ color: hasDevice ? 'var(--safe)' : 'var(--text-faint)', marginTop: '4px', fontSize: '10.5px', fontWeight: 600 }}>
-                        🌡️ {w.temperature}°C • 💨 {w.wind_speed}km/h • 💧 {w.humidity}% • {hasDevice ? '🟢 Détection IA active' : '⚪ Capteur non appairé'}
+                      <span style={{ color: hasDevice ? 'var(--safe)' : 'var(--text-faint)', marginTop: '4px', fontSize: '10.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><ThermometerIcon size={11} /> {w.temperature}°C</span>
+                        <span>•</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><WindIcon size={11} /> {w.wind_speed} km/h</span>
+                        <span>•</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><DropletIcon size={11} /> {w.humidity}%</span>
+                        <span>•</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: hasDevice ? 'var(--safe)' : 'var(--text-faint)' }} />
+                          {hasDevice ? 'Surveillance continue active' : 'Capteur non appairé'}
+                        </span>
                       </span>
                     )}
                   </div>
@@ -251,7 +275,9 @@ export const Home: React.FC = () => {
               alignItems: 'center',
               gap: '8px'
             }}>
-              <span style={{ fontSize: '26px' }}>📍</span>
+              <div style={{ color: 'var(--text-faint)', marginBottom: '4px' }}>
+                <PinIcon size={28} />
+              </div>
               <strong style={{ fontSize: '14px', color: '#fff' }}>Aucun site de surveillance configuré</strong>
               <p style={{ fontSize: '12px', color: 'var(--text-faint)', margin: '0 0 10px 0', maxWidth: '300px' }}>
                 Ajoutez vos parcelles ou zones à surveiller sur la carte pour suivre leur activité en temps réel.
@@ -342,7 +368,10 @@ export const Home: React.FC = () => {
                   }
                 }}
               >
-                {s.device ? '📡 ' : '📍 '}{s.name}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  {s.device ? <RadioIcon size={13} /> : <PinIcon size={13} />}
+                  {s.name}
+                </span>
               </button>
             ))
           ) : pairedDevice ? (
@@ -407,11 +436,10 @@ export const Home: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '24px',
               marginBottom: '12px',
               boxShadow: '0 0 16px rgba(239, 68, 68, 0.2)'
             }}>
-              🔒
+              <LockIcon size={24} color="#f87171" />
             </div>
 
             <div style={{
@@ -448,7 +476,7 @@ export const Home: React.FC = () => {
               margin: '0 0 18px 0',
               lineHeight: '1.45'
             }}>
-              Vous devez associer un Raspberry Pi à votre compte pour accéder au flux vidéo de télésurveillance et à la détection IA.
+              Vous devez associer un Raspberry Pi à votre compte pour accéder au flux vidéo de télésurveillance et aux alertes en temps réel.
             </p>
 
             <button
@@ -471,7 +499,8 @@ export const Home: React.FC = () => {
                 transition: 'all 0.2s ease'
               }}
             >
-              <span>📡 Lier mon Raspberry Pi</span>
+              <RadioIcon size={15} />
+              <span>Lier mon Raspberry Pi</span>
             </button>
           </div>
         ) : (
@@ -498,12 +527,13 @@ export const Home: React.FC = () => {
             {pairedDevice.tamper_status === 'tampered' ? (
               <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(220, 38, 38, 0.9)', padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, color: '#fff', border: '1px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)', boxShadow: '0 0 15px rgba(220,38,38,0.6)' }}>
                 <span className="live-dot" style={{ background: '#fff', width: '7px', height: '7px' }}></span>
-                ⚠️ SABOTAGE DÉTECTÉ
+                <ShieldAlertIcon size={14} />
+                SABOTAGE DÉTECTÉ
               </div>
             ) : pairedDevice.status === 'offline' ? (
               <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(217, 119, 6, 0.9)', padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, color: '#fff', border: '1px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)' }}>
                 <span style={{ background: '#f59e0b', width: '7px', height: '7px', borderRadius: '50%' }}></span>
-                🔴 SIGNAL PERDU (Dead Man's Switch)
+                SIGNAL PERDU (Dead Man's Switch)
               </div>
             ) : (
               <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: 'var(--safe)', border: '1px solid rgba(0, 204, 102, 0.3)', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)' }}>
@@ -556,7 +586,7 @@ export const Home: React.FC = () => {
         )}
 
         {isLoadingForecast ? (
-          <div style={{ color: 'var(--text-dim)', textAlign: 'center', marginTop: '20px' }}>Chargement des modèles IA météo...</div>
+          <div style={{ color: 'var(--text-dim)', textAlign: 'center', marginTop: '20px' }}>Chargement des prévisions météorologiques...</div>
         ) : chartData.length > 0 ? (
           <>
             <div className="chart-container">
@@ -585,8 +615,8 @@ export const Home: React.FC = () => {
             </div>
 
             <div className="chart-container">
-              <div className="chart-title">
-                🌡️ Température & Conditions
+              <div className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ThermometerIcon size={16} /> Température & Conditions
               </div>
               <div className="chart-wrapper">
                 <ResponsiveContainer width="100%" height="100%">

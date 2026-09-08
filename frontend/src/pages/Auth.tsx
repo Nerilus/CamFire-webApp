@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { useAuth } from '../context/AuthContext';
 import { PairDevice } from './PairDevice';
+import { FlameIcon } from '../components/icons';
 
 export const Auth: React.FC = () => {
   const navigate = useNavigate();
@@ -68,7 +69,7 @@ export const Auth: React.FC = () => {
         {/* En-tête de l'application */}
         <div style={styles.header}>
           <div style={styles.logoContainer}>
-            <span style={styles.logoIcon}>🔥</span>
+            <FlameIcon size={28} />
           </div>
           <h1 style={styles.title}>CamFire</h1>
           <p style={styles.subtitle}>Système Intelligent de Télésurveillance Incendie</p>

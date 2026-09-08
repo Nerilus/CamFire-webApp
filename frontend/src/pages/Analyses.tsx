@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { fetchForecast, type ZoneForecast } from '../services/weatherService';
 import { siteService, type Site } from '../services/siteService';
-import { FlameIcon } from '../components/icons';
+import { FlameIcon, RadioIcon, PinIcon, ThermometerIcon } from '../components/icons';
 import './Analyses.css';
 
 export const Analyses: React.FC = () => {
@@ -80,18 +80,24 @@ export const Analyses: React.FC = () => {
               className={`zone-btn ${selectedSiteId === s.id ? 'active' : ''}`}
               onClick={() => setSelectedSiteId(s.id)}
             >
-              {s.device ? '📡 ' : '📍 '}{s.name}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                {s.device ? <RadioIcon size={13} /> : <PinIcon size={13} />}
+                {s.name}
+              </span>
             </button>
           ))
         ) : (
           <button className="zone-btn active">
-            📡 Surveillance Active (Raspberry 4)
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <RadioIcon size={13} />
+              Surveillance Active (Raspberry Pi)
+            </span>
           </button>
         )}
       </div>
 
       {isLoading ? (
-        <div style={{ color: 'var(--text-dim)', textAlign: 'center', marginTop: '40px' }}>Chargement des modèles IA météo...</div>
+        <div style={{ color: 'var(--text-dim)', textAlign: 'center', marginTop: '40px' }}>Chargement des prévisions météorologiques...</div>
       ) : chartData.length > 0 ? (
         <>
           <div className="chart-container">
@@ -120,8 +126,8 @@ export const Analyses: React.FC = () => {
           </div>
 
           <div className="chart-container">
-            <div className="chart-title">
-              🌡️ Température & Conditions
+            <div className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ThermometerIcon size={16} /> Température & Conditions
             </div>
             <div className="chart-wrapper">
               <ResponsiveContainer width="100%" height="100%">

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FlashIcon, RefreshIcon, GalleryIcon, UploadIcon } from '../components/icons';
+import { FlashIcon, RefreshIcon, GalleryIcon, UploadIcon, XIcon } from '../components/icons';
 import { FireAlertModal } from '../components/FireAlertModal';
 import { useMedia } from '../context/MediaContext';
 import { scanService } from '../services/scanService';
@@ -154,10 +154,10 @@ export const Scan: React.FC = () => {
         {capturedUrl && (
           <button 
             onClick={resetScanner}
-            style={{ position: 'absolute', top: '15px', right: '15px', zIndex: 10, background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', color: 'white', width: '36px', height: '36px', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ position: 'absolute', top: '15px', right: '15px', zIndex: 10, background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', color: 'white', width: '36px', height: '36px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title="Fermer l'image"
           >
-            ✕
+            <XIcon size={18} />
           </button>
         )}
 

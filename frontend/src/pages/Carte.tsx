@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Circle, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { FlameIcon, XIcon, RefreshIcon, MaximizeIcon } from '../components/icons';
+import { FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, FlashIcon, TrashIcon } from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
 import { fetchZonesWeather } from '../services/weatherService';
 import { deviceService, type Device } from '../services/deviceService';
@@ -19,15 +19,17 @@ const createSiteIcon = (hasDevice: boolean, status: 'safe' | 'warn' | 'fire', is
     ? `<div style="position: absolute; top: 50%; left: 50%; width: 56px; height: 56px; transform: translate(-50%, -50%); border-radius: 50%; border: 2px solid ${color}; animation: pulse-ring 1.2s infinite;"></div>` 
     : '';
   
-  const iconEmoji = hasDevice ? '📡' : '📍';
+  const markerSvg = hasDevice
+    ? `<svg width="${isSelected ? 16 : 12}" height="${isSelected ? 16 : 12}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.93 19.07A10 10 0 0 1 19.07 4.93M7.76 16.24a6 6 0 0 1 8.48-8.48M10.59 13.41a2 2 0 0 1 2.82-2.82"/><line x1="12" y1="12" x2="12.01" y2="12" stroke-width="3"/></svg>`
+    : `<svg width="${isSelected ? 16 : 12}" height="${isSelected ? 16 : 12}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>`;
   
   return L.divIcon({
     className: 'custom-leaflet-icon',
     html: `
       ${pulseHtml}
-      <div style="width: ${size}px; height: ${size}px; background-color: #111118; border: 2px solid ${color}; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px ${color}; font-size: ${isSelected ? '16px' : '13px'}; position: relative; z-index: 2; transition: all 0.3s ease;">
+      <div style="width: ${size}px; height: ${size}px; background-color: #111118; border: 2px solid ${color}; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px ${color}; position: relative; z-index: 2; transition: all 0.3s ease;">
         ${hasDevice ? `<span style="position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: ${color}; border-radius: 50%; border: 1.5px solid #111118;"></span>` : ''}
-        ${iconEmoji}
+        ${markerSvg}
       </div>
     `,
     iconSize: [size, size],
@@ -140,7 +142,7 @@ export const Carte: React.FC = () => {
           setFireAlert(prev => {
             if (data.fire && (!prev || prev.timestamp !== data.timestamp)) {
               if ("Notification" in window && Notification.permission === "granted") {
-                new Notification("🔥 ALERTE INCENDIE SUR SITE", { 
+                new Notification("ALERTE INCENDIE SUR SITE", { 
                   body: `Feu détecté par un Raspberry Pi ! (${data.confidence}%)`,
                   icon: '/favicon.ico'
                 });
@@ -303,7 +305,8 @@ export const Carte: React.FC = () => {
               }}
               title="Ouvrir la liste complète de tous vos sites"
             >
-              <span>📋 Afficher les sites ({sites.length})</span>
+              <ListIcon size={14} />
+              <span>Afficher les sites ({sites.length})</span>
             </button>
           )}
 
@@ -354,7 +357,9 @@ export const Carte: React.FC = () => {
                 onClick={() => setSelectedSiteId(site.id)}
                 title={`Afficher ${site.name} sur le plan`}
               >
-                <span>{hasDev ? '📡' : '📍'}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  {hasDev ? <RadioIcon size={13} /> : <PinIcon size={13} />}
+                </span>
                 <strong>{site.name}</strong>
                 {hasDev && <span className="chip-live-dot" title="Équipé d'un Raspberry Pi" />}
               </button>
@@ -411,7 +416,9 @@ export const Carte: React.FC = () => {
             maxWidth: '400px',
             width: '90%'
           }}>
-            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📍</div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px', color: '#ff4400' }}>
+              <PinIcon size={32} />
+            </div>
             <div style={{ fontWeight: 800, fontSize: '16px', color: '#f8fafc', letterSpacing: '0.5px' }}>
               AUCUN SITE SUR LE PLAN
             </div>
@@ -433,10 +440,15 @@ export const Carte: React.FC = () => {
                     fontWeight: 700,
                     fontSize: '12.5px',
                     cursor: 'pointer',
-                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)'
+                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
                   }}
                 >
-                  ⚡ Créer un site pour {pairedDevices[0].name}
+                  <FlashIcon size={14} />
+                  <span>Créer un site pour {pairedDevices[0].name}</span>
                 </button>
               )}
 
@@ -507,7 +519,7 @@ export const Carte: React.FC = () => {
                   }}
                 >
                   <Tooltip permanent direction="top" offset={[0, -18]} className="site-leaflet-tooltip">
-                    <span>{hasDev ? '📡 ' : '📍 '}{site.name}</span>
+                    <span>{site.name}</span>
                   </Tooltip>
                 </Marker>
               </React.Fragment>
@@ -603,10 +615,12 @@ export const Carte: React.FC = () => {
                     textAlign: 'center' 
                   }}
                 >
-                  <div style={{ fontSize: '26px', marginBottom: '6px' }}>📡</div>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px', color: '#94a3b8' }}>
+                    <RadioIcon size={28} />
+                  </div>
                   <div style={{ fontWeight: 700, color: '#f8fafc', fontSize: '13px' }}>SITE NON ÉQUIPÉ DE RASPBERRY PI</div>
                   <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '4px', maxWidth: '280px' }}>
-                    Associez l'un de vos Raspberry Pi pour activer la détection IA et la vidéo en direct sur ce site.
+                    Associez l'un de vos Raspberry Pi pour activer la télésurveillance et la vidéo en direct sur ce site.
                   </div>
                   <button
                     type="button"
@@ -689,7 +703,7 @@ export const Carte: React.FC = () => {
           <div className="site-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="site-modal-header">
               <div className="site-modal-title">
-                <span>📍</span>
+                <PinIcon size={18} />
                 <span>Nouveau Site de Surveillance</span>
               </div>
               <button className="panel-close-btn" onClick={() => setIsAddModalOpen(false)}>
@@ -813,7 +827,7 @@ export const Carte: React.FC = () => {
           <div className="site-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="site-modal-header">
               <div className="site-modal-title">
-                <span>📡</span>
+                <RadioIcon size={18} />
                 <span>Associer un Raspberry Pi</span>
               </div>
               <button className="panel-close-btn" onClick={() => setIsAssignModalOpen(false)}>
@@ -870,7 +884,7 @@ export const Carte: React.FC = () => {
           <div className="site-modal-card" style={{ maxWidth: '560px' }} onClick={(e) => e.stopPropagation()}>
             <div className="site-modal-header">
               <div className="site-modal-title">
-                <span>📋</span>
+                <ListIcon size={18} />
                 <span>Vos Sites de Surveillance ({sites.length})</span>
               </div>
               <button className="panel-close-btn" onClick={() => setIsSitesListModalOpen(false)}>
@@ -898,7 +912,9 @@ export const Carte: React.FC = () => {
                   >
                     <div className="site-card-info">
                       <div className="site-card-name">
-                        <span>{hasDev ? '📡' : '📍'}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          {hasDev ? <RadioIcon size={14} /> : <PinIcon size={14} />}
+                        </span>
                         <span>{site.name}</span>
                         {hasDev && <span className="chip-live-dot" title="Flux vidéo en direct actif" />}
                       </div>
@@ -909,11 +925,24 @@ export const Carte: React.FC = () => {
 
                       <div style={{ marginTop: '4px' }}>
                         {hasDev ? (
-                          <span style={{ fontSize: '11px', color: '#00cc66', background: 'rgba(0, 204, 102, 0.12)', padding: '2px 8px', borderRadius: '8px', border: '1px solid rgba(0, 204, 102, 0.25)' }}>
-                            Raspberry 4 : {site.device?.name}
+                          <span style={{
+                            fontSize: '11px',
+                            background: 'rgba(0, 204, 102, 0.15)',
+                            color: '#00cc66',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            fontWeight: 700
+                          }}>
+                            Équipé : {site.device?.name || site.device?.device_id}
                           </span>
                         ) : (
-                          <span style={{ fontSize: '11px', color: '#94a3b8', background: 'rgba(148, 163, 184, 0.12)', padding: '2px 8px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.25)' }}>
+                          <span style={{
+                            fontSize: '11px',
+                            background: 'rgba(148, 163, 184, 0.12)',
+                            color: '#94a3b8',
+                            padding: '2px 8px',
+                            borderRadius: '6px'
+                          }}>
                             Non équipé
                           </span>
                         )}
@@ -924,45 +953,23 @@ export const Carte: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
+                          setSelectedDeviceIdToAssign(site.device_id || '');
                           setSelectedSiteId(site.id);
-                          setIsSitesListModalOpen(false);
-                        }}
-                        style={{
-                          background: 'linear-gradient(135deg, #ff3300 0%, #ff5500 100%)',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '8px',
-                          padding: '7px 12px',
-                          fontSize: '11.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                        title="Afficher ce site sur le plan"
-                      >
-                        Voir sur le plan
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedSiteId(site.id);
-                          setSelectedDeviceIdToAssign(site.device_id || (pairedDevices.length > 0 ? pairedDevices[0].id : ''));
                           setIsSitesListModalOpen(false);
                           setIsAssignModalOpen(true);
                         }}
                         style={{
-                          background: 'rgba(255, 255, 255, 0.08)',
-                          color: '#cbd5e1',
-                          border: '1px solid rgba(255, 255, 255, 0.15)',
+                          background: hasDev ? 'rgba(0, 204, 102, 0.15)' : 'rgba(255, 68, 0, 0.15)',
+                          color: hasDev ? '#00cc66' : '#ff5500',
+                          border: `1px solid ${hasDev ? 'rgba(0, 204, 102, 0.3)' : 'rgba(255, 68, 0, 0.3)'}`,
                           borderRadius: '8px',
-                          padding: '7px 10px',
+                          padding: '7px 12px',
                           fontSize: '11px',
-                          fontWeight: 600,
+                          fontWeight: 700,
                           cursor: 'pointer'
                         }}
-                        title="Associer ou changer de Raspberry Pi"
                       >
-                        {hasDev ? "Changer" : "Associer"}
+                        {hasDev ? 'Gérer caméra' : '+ Lier caméra'}
                       </button>
 
                       <button
@@ -975,11 +982,14 @@ export const Carte: React.FC = () => {
                           borderRadius: '8px',
                           padding: '7px 10px',
                           fontSize: '11px',
-                          cursor: 'pointer'
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
                         }}
                         title="Supprimer ce site"
                       >
-                        🗑️
+                        <TrashIcon size={14} />
                       </button>
                     </div>
                   </div>

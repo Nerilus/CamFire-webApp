@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DownloadIcon, ShareIcon, FlameIcon, CheckCircleIcon, WarningIcon, EyeIcon } from '../components/icons';
+import { DownloadIcon, ShareIcon, FlameIcon, CheckCircleIcon, WarningIcon, EyeIcon, CameraIcon } from '../components/icons';
 import { FireAlertModal, type AlertRecord } from '../components/FireAlertModal';
 import './History.css';
 
@@ -120,8 +120,9 @@ export const History: React.FC = () => {
                     <div className="timeline-top-badges">
                       <span className={`badge ${meta.badge}`}>{meta.label}</span>
                       {rec.image_url && (
-                        <span className="timeline-photo-tag">
-                          📷 Photo
+                        <span className="timeline-photo-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <CameraIcon size={11} />
+                          Photo
                         </span>
                       )}
                     </div>
