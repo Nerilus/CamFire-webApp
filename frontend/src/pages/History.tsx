@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DownloadIcon, ShareIcon, FlameIcon, CheckCircleIcon, WarningIcon, EyeIcon, CameraIcon } from '../components/icons';
+import { DownloadIcon, ShareIcon, SmokeIcon, CheckCircleIcon, WarningIcon, EyeIcon } from '../components/icons';
 import { FireAlertModal, type AlertRecord } from '../components/FireAlertModal';
 import './History.css';
 
@@ -7,13 +7,13 @@ export type ScanStatus = 'fire' | 'safe' | 'warn';
 
 const filters: { key: 'all' | ScanStatus | 'shared'; label: string }[] = [
   { key: 'all', label: 'TOUS' },
-  { key: 'fire', label: 'INCENDIES' },
+  { key: 'fire', label: 'FUMÉE' },
   { key: 'warn', label: 'ALERTES & INTRUSIONS' },
   { key: 'shared', label: 'PARTAGÉS' },
 ];
 
-const statusMeta: Record<ScanStatus, { label: string; badge: string; Icon: typeof FlameIcon }> = {
-  fire: { label: 'FEU', badge: 'badge-fire', Icon: FlameIcon },
+const statusMeta: Record<ScanStatus, { label: string; badge: string; Icon: typeof SmokeIcon }> = {
+  fire: { label: 'FUMÉE', badge: 'badge-fire', Icon: SmokeIcon },
   safe: { label: 'SÛR', badge: 'badge-safe', Icon: CheckCircleIcon },
   warn: { label: 'ALERTE', badge: 'badge-warn', Icon: WarningIcon },
 };
@@ -45,12 +45,12 @@ export const History: React.FC = () => {
           return {
             id: alert.id,
             status: alert.status,
-            location: alert.location,
+            location: (alert.location || '').replace(/\(Feu\)/g, '(Fumée)'),
             date: formattedDate,
             confidence: alert.confidence,
             coords: alert.coords || '46.2276°N 2.2137°E',
             image_url: fullImageUrl,
-            detection_type: alert.detection_type || (alert.status === 'fire' ? 'fire' : 'person')
+            detection_type: alert.detection_type || (alert.status === 'fire' ? 'smoke' : 'person')
           };
         });
         setHistory(formattedData);
@@ -120,8 +120,7 @@ export const History: React.FC = () => {
                     <div className="timeline-top-badges">
                       <span className={`badge ${meta.badge}`}>{meta.label}</span>
                       {rec.image_url && (
-                        <span className="timeline-photo-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <CameraIcon size={11} />
+                        <span className="timeline-photo-tag">
                           Photo
                         </span>
                       )}

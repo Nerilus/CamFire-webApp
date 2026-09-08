@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FlameIcon, WarningIcon, XIcon, CheckCircleIcon, EyeIcon, UsersIcon, PhoneIcon, SendIcon } from './icons';
+import { SmokeIcon, WarningIcon, XIcon, CheckCircleIcon, EyeIcon, UsersIcon, PhoneIcon, SendIcon } from './icons';
 import './FireAlertModal.css';
 
 export interface AlertRecord {
@@ -29,7 +29,7 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
     ? Math.round(rawConf > 1 ? rawConf : rawConf * 100)
     : 95;
 
-  const isFire = record.status === 'fire' || record.detection_type === 'fire' || (record.location && record.location.toLowerCase().includes('feu'));
+  const isFire = record.status === 'fire' || record.detection_type === 'fire' || record.detection_type === 'smoke' || (record.location && (record.location.toLowerCase().includes('feu') || record.location.toLowerCase().includes('fumée')));
 
   return (
     <>
@@ -37,7 +37,7 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
         <div className={`fire-modal ${isFire ? 'fire-theme' : 'warn-theme'}`}>
           <div className="fire-modal-top">
             <span className="live-alert">
-              <span className="live-dot" /> {isFire ? 'ALERTE EN DIRECT' : 'ALERTE SURVEILLANCE'}
+              <span className="live-dot" /> {isFire ? 'DÉTECTION DE FUMÉE' : 'ALERTE SURVEILLANCE'}
             </span>
             <button className="fire-modal-close" onClick={onClose} aria-label="Fermer">
               <XIcon size={20} />
@@ -45,14 +45,14 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
           </div>
 
           <div className="fire-modal-icon">
-            {isFire ? <FlameIcon size={56} /> : <WarningIcon size={56} />}
+            {isFire ? <SmokeIcon size={56} /> : <WarningIcon size={56} />}
           </div>
           <h1 className="fire-modal-title">
             {isFire ? (
               <>
-                INCENDIE
+                FUMÉE
                 <br />
-                DÉTECTÉ
+                DÉTECTÉE
               </>
             ) : (
               <>
@@ -64,14 +64,14 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
           </h1>
 
           <div className="fire-modal-location">
-            <strong>{record.location}</strong>
+            <strong>{(record.location || '').replace(/\(Feu\)/g, '(Fumée)')}</strong>
             <span>
               {record.coords || '46.2276°N 2.2137°E'} · Conf : {displayConfidence}%
             </span>
           </div>
 
           <div className="fire-modal-sent">
-            <CheckCircleIcon size={16} /> {isFire ? 'Alerte incendie envoyée avec succès' : 'Rapport de sécurité enregistré'}
+            <CheckCircleIcon size={16} /> {isFire ? 'Alerte fumée envoyée avec succès' : 'Rapport de sécurité enregistré'}
           </div>
 
           {/* Preuve photo capturée mise en avant */}
@@ -95,7 +95,7 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
           ) : (
             <div className="fire-modal-evidence">
               <div className="fire-modal-evidence-thumb">
-                {isFire ? <FlameIcon size={22} /> : <WarningIcon size={22} />}
+                {isFire ? <SmokeIcon size={22} /> : <WarningIcon size={22} />}
               </div>
               <div className="fire-modal-evidence-text">
                 <span>Alerte sans capture photo</span>

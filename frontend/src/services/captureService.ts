@@ -2,7 +2,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export interface CaptureItem {
   id: number;
-  detection_type: 'person' | 'fire' | 'manual';
+  detection_type: 'person' | 'fire' | 'smoke' | 'manual';
   status: 'warn' | 'fire' | 'safe';
   confidence?: number;
   location?: string;

@@ -18,6 +18,12 @@ export const FlameIcon: React.FC<IconProps> = ({ size, className }) => (
   </svg>
 );
 
+export const SmokeIcon: React.FC<IconProps> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <path d="M4 19h16M7 15c1.5-2 3-2 3-5 0-2-1.5-3-1.5-5M12 15c1.5-2 3-2 3-5 0-2-1.5-3-1.5-5M17 15c1.5-2 3-2 3-5 0-2-1.5-3-1.5-5" />
+  </svg>
+);
+
 export const HomeIcon: React.FC<IconProps> = ({ size, className }) => (
   <svg {...base(size)} className={className}>
     <path d="M3 11l9-8 9 8" />
