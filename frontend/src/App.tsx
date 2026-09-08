@@ -13,6 +13,7 @@ import { Settings } from './pages/Settings';
 import { Carte } from './pages/Carte';
 import { Profile } from './pages/Profile';
 import { Analyses } from './pages/Analyses';
+import { PairDevice } from './pages/PairDevice';
 import './styles/app.css';
 
 function App() {
@@ -22,6 +23,14 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/auth" element={<Auth />} />
+            <Route
+              path="/pair"
+              element={
+                <RequireAuth>
+                  <PairDevice />
+                </RequireAuth>
+              }
+            />
             <Route
               element={
                 <RequireAuth>

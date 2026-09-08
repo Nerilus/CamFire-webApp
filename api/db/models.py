@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from datetime import datetime
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, Float, DateTime
 from sqlalchemy.orm import relationship
 from db.database import Base
 
@@ -8,10 +9,77 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    firstname= Column(String, nullable=True)
+    firstname = Column(String, nullable=True)
     lastname = Column(String, nullable=True)
     
     contacts = relationship("EmergencyContact", back_populates="user", cascade="all, delete-orphan")
+    user_devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
+    sites = relationship("Site", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def devices(self):
+        return [
+            {
+                "id": ud.device.id,
+                "device_id": ud.device.device_id,
+                "name": ud.custom_name or ud.device.name,
+                "is_paired": True,
+                "paired_at": ud.paired_at,
+                "last_seen_at": ud.device.last_seen_at,
+                "lat": ud.device.lat,
+                "lng": ud.device.lng,
+                "status": "online"
+            }
+            for ud in self.user_devices
+        ]
+
+class UserDevice(Base):
+    __tablename__ = "user_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True)
+    custom_name = Column(String, nullable=True)
+    role = Column(String, default="owner", nullable=False) # 'owner' ou 'member'
+    paired_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="user_devices")
+    device = relationship("Device", back_populates="user_devices")
+
+class Device(Base):
+    __tablename__ = "devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String(64), unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False, default="Raspberry 4")
+    hashed_pairing_code = Column(String, nullable=False)
+    stream_url = Column(String, nullable=False, default="http://172.20.10.2:8080/")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    is_paired = Column(Boolean, default=False, nullable=False)
+    paired_at = Column(DateTime, nullable=True)
+    code_expires_at = Column(DateTime, nullable=True)
+    last_seen_at = Column(DateTime, nullable=True)
+    lat = Column(Float, default=46.2276, nullable=True)
+    lng = Column(Float, default=2.2137, nullable=True)
+
+    user_devices = relationship("UserDevice", back_populates="device", cascade="all, delete-orphan")
+    sites = relationship("Site", back_populates="device")
+
+class Site(Base):
+    __tablename__ = "sites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    lat = Column(Float, nullable=False, default=46.2276)
+    lng = Column(Float, nullable=False, default=2.2137)
+    radius = Column(Float, nullable=False, default=500.0) # Rayon de surveillance en mètres
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="sites")
+    device = relationship("Device", back_populates="sites")
 
 class EmergencyContact(Base):
     __tablename__ = "emergency_contacts"
@@ -24,8 +92,6 @@ class EmergencyContact(Base):
 
     user = relationship("User", back_populates="contacts")
 
-from datetime import datetime
-from sqlalchemy import Float, DateTime
 
 class Alert(Base):
     __tablename__ = "alerts"
@@ -36,3 +102,18 @@ class Alert(Base):
     date = Column(DateTime, default=datetime.utcnow)
     confidence = Column(Float, nullable=True)
     coords = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
+    detection_type = Column(String, nullable=True, default="fire") # 'fire', 'person', 'manual'
+
+class Capture(Base):
+    __tablename__ = "captures"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True)
+    detection_type = Column(String, nullable=False, default="person") # "person", "fire", "manual"
+    status = Column(String, nullable=False, default="warn") # "warn", "fire", "safe"
+    confidence = Column(Float, nullable=True)
+    location = Column(String, nullable=True, default="Raspberry 4")
+    image_url = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

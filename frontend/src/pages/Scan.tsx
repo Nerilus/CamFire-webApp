@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FlashIcon, RefreshIcon, GalleryIcon, UploadIcon } from '../components/icons';
 import { FireAlertModal } from '../components/FireAlertModal';
-import { scanHistory } from '../services/mockData';
 import { useMedia } from '../context/MediaContext';
 import { scanService } from '../services/scanService';
 import './Scan.css';
@@ -17,7 +16,6 @@ export const Scan: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [facingMode, setFacingMode] = useState<FacingMode>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -236,7 +234,14 @@ export const Scan: React.FC = () => {
 
       {fireDetected && (
         <FireAlertModal 
-          record={scanHistory[0]} 
+          record={{
+            id: 'scan-live',
+            status: 'fire',
+            location: 'Caméra Mobile / Scan Direct',
+            date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+            coords: 'Position de scan',
+            confidence: Math.round(confidence * 100)
+          }} 
           onClose={() => setFireDetected(false)}
           imageUrl={gradcamImage || capturedUrl}
           confidence={confidence}
