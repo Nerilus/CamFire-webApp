@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from db.database import engine, Base
 from routers import auth, contacts, scan, weather, alerts, devices, sites, captures
+from services.discord import send_discord_alert_sync
 
 import threading
 import time
@@ -58,6 +59,7 @@ def _dead_man_switch_loop():
                             db.add(alert)
                             db.commit()
                             print(f"[DEAD MAN'S SWITCH] Alerte securite : {dev.name} ({dev.device_id}) silencieux depuis {int(silence_duration)}s")
+                            send_discord_alert_sync("tamper", f"{dev.name} (Coupe)", 95.0)
             except Exception as err:
                 print(f"[DEAD MAN'S SWITCH DB ERROR] {err}")
             finally:
