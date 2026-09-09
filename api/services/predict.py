@@ -61,14 +61,13 @@ def process_image(image_bytes: bytes):
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
     print("Analyse de l'image en cours par les modèles YOLO IA...")
-    # Lancer la prédiction avec un seuil de confiance plus bas (0.15) pour le feu
-    results_fire = _model.predict(source=img, conf=0.15, verbose=False)
+    # Lancer la prédiction avec un seuil de confiance calibré (0.35)
+    results_fire = _model.predict(source=img, conf=0.35, verbose=False)
+    results_person = _person_model.predict(source=img, classes=[0], conf=0.35, verbose=False)
     
-    # Lancer la prédiction pour les personnes (classe 0 dans COCO)
-    results_person = _person_model.predict(source=img, classes=[0], conf=0.30, verbose=False)
-    
-    # Récupérer l'image avec les boîtes dessinées dessus (Feu/Fumée)
-    res_plotted = results_fire[0].plot()
+    # Image pour annotations
+    res_plotted = img.copy()
+    h, w = img.shape[:2]
     
     # Extraire les métadonnées de détection
     detections = []
@@ -79,17 +78,30 @@ def process_image(image_bytes: bytes):
     # Détections du modèle Feu/Fumée
     if results_fire[0].boxes is not None:
         for box in results_fire[0].boxes:
-            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(w, x2), min(h, y2)
+            crop = img[y1:y2, x1:x2]
+
             conf = float(box.conf[0])
             cls_id = int(box.cls[0])
             class_name = _model.names[cls_id] if _model and hasattr(_model, 'names') else str(cls_id)
             
+            # Filtre anti-faux-positifs sur blanc
+            if not validate_fire_or_smoke(crop, class_name, conf):
+                continue
+
             is_fire = True
             if conf > max_fire_conf:
                 max_fire_conf = conf
+
+            color = (0, 69, 255) if class_name == "wildfire" else (0, 140, 255)
+            label = "Feu" if class_name == "wildfire" else "Fumee"
+            cv2.rectangle(res_plotted, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(res_plotted, f"{label} {int(conf * 100)}%", (x1, max(15, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                 
             detections.append({
-                "bbox": [round(x1, 2), round(y1, 2), round(x2, 2), round(y2, 2)],
+                "bbox": [round(float(x1), 2), round(float(y1), 2), round(float(x2), 2), round(float(y2), 2)],
                 "confidence": round(conf, 4),
                 "class": class_name
             })
@@ -113,14 +125,16 @@ def process_image(image_bytes: bytes):
                 "class": class_name
             })
             
-    if is_fire:
+    has_person = len(results_person[0].boxes) > 0 if results_person[0].boxes is not None else False
+    if has_person:
+        max_p_conf = max([float(b.conf[0]) for b in results_person[0].boxes])
+        save_capture_async("person", "warn", round(max_p_conf * 100, 1), "Scan Manuel", res_plotted)
+    elif is_fire:
         confidence_percent = round(max_fire_conf * 100, 1)
-        print(f"🔥 ALERTE : Il y a le feu ! (Analyse Image | Confiance max : {confidence_percent}%)")
-        
-        # Enregistrer l'alerte en base de données en arrière-plan
-        save_alert_async("fire", "Scan Manuel", confidence_percent, "Non spécifié")
+        print(f"[ALERTE FUMÉE] Détection de fumée (Analyse Image | Confiance max : {confidence_percent}%)")
+        save_capture_async("smoke", "fire", confidence_percent, "Scan Manuel (Fumée)", res_plotted)
     else:
-        print(f"🟢 RAS - Surveillance normale (Aucune détection de feu)")
+        print(f"[SURVEILLANCE] Surveillance normale (Aucune détection)")
     
     # Encoder l'image en JPEG
     success, encoded_img = cv2.imencode('.jpg', res_plotted)
@@ -139,20 +153,90 @@ def process_image(image_bytes: bytes):
 import httpx
 import time
 import threading
+from datetime import datetime
 
-def save_alert_async(status: str, location: str, confidence: float, coords: str):
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
+CAPTURES_DIR = os.path.join(STATIC_DIR, "captures")
+os.makedirs(CAPTURES_DIR, exist_ok=True)
+
+def save_alert_async(status: str, location: str, confidence: float, coords: str, image_url: str = None, detection_type: str = "fire"):
     def _save():
         from db.database import SessionLocal
         from db.models import Alert
         db = SessionLocal()
         try:
-            db.add(Alert(status=status, location=location, confidence=confidence, coords=coords))
+            db.add(Alert(
+                status=status,
+                location=location,
+                confidence=confidence,
+                coords=coords,
+                image_url=image_url,
+                detection_type=detection_type,
+                date=datetime.utcnow()
+            ))
             db.commit()
         except Exception as e:
-            print(f"Erreur DB (Background): {e}")
+            print(f"Erreur DB (Background Alert): {e}")
         finally:
             db.close()
     threading.Thread(target=_save, daemon=True).start()
+
+def save_capture_async(detection_type: str, status: str, confidence: float, location: str, image_np, user_id: int = None, device_id: int = None):
+    """
+    Sauvegarde asynchrone sur disque de la photo prise lors d'une détection (personne ou feu)
+    et enregistrement dans la table captures et alerts.
+    """
+    def _save_task():
+        try:
+            now_dt = datetime.utcnow()
+            timestamp_str = now_dt.strftime('%Y%m%d_%H%M%S_%f')[:19]
+            filename = f"{detection_type}_{timestamp_str}.jpg"
+            filepath = os.path.join(CAPTURES_DIR, filename)
+
+            # Écriture de l'image JPEG sur le disque
+            success = cv2.imwrite(filepath, image_np)
+            if not success:
+                print(f"Erreur écriture fichier snapshot {filepath}")
+                return
+
+            image_url = f"/static/captures/{filename}"
+
+            from db.database import SessionLocal
+            from db.models import Capture, Alert
+            db = SessionLocal()
+            try:
+                capture = Capture(
+                    user_id=user_id,
+                    device_id=device_id,
+                    detection_type=detection_type,
+                    status=status,
+                    confidence=confidence,
+                    location=location,
+                    image_url=image_url,
+                    created_at=now_dt
+                )
+                db.add(capture)
+
+                alert = Alert(
+                    status=status,
+                    location=location,
+                    confidence=confidence,
+                    coords="46.2276°N 2.2137°E",
+                    image_url=image_url,
+                    detection_type=detection_type,
+                    date=now_dt
+                )
+                db.add(alert)
+                db.commit()
+                print(f"[CAPTURE] Snapshot enregistrée: {filename} -> Type: {detection_type.upper()} ({confidence}%) à {location}")
+            except Exception as dbe:
+                print(f"Erreur DB Capture: {dbe}")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"Erreur globale save_capture_async: {e}")
+
+    threading.Thread(target=_save_task, daemon=True).start()
 
 # Variable globale pour stocker le dernier état de détection
 latest_detection = {
@@ -162,111 +246,282 @@ latest_detection = {
     "timestamp": 0.0
 }
 
+# État partagé pour le découplage Vidéo (30 FPS) / IA asynchrone (~2 FPS)
+_ai_lock = threading.Lock()
+_current_raw_frame = None
+_current_boxes = []
+_ai_thread_started = False
+
+def validate_fire_or_smoke(crop, class_name: str, conf: float, person_boxes=None, fire_box=None) -> bool:
+    """
+    Filtre anti-faux-positifs calibré :
+    - Élimine les reflets blancs et les sources de lumière blanche.
+    - Élimine les teintes roses / infrarouges (caméras Raspberry Pi NoIR).
+    - Élimine les fausses détections de feu sur le visage ou le corps d'une personne.
+    """
+    if crop is None or crop.size == 0 or crop.shape[0] < 8 or crop.shape[1] < 8:
+        return False
+
+    try:
+        # Rejet si la boîte de feu chevauche une personne (visage, peau, vêtement)
+        if person_boxes and fire_box:
+            fx1, fy1, fx2, fy2 = fire_box
+            f_area = max(1, (fx2 - fx1) * (fy2 - fy1))
+            for px1, py1, px2, py2 in person_boxes:
+                ix1 = max(fx1, px1)
+                iy1 = max(fy1, py1)
+                ix2 = min(fx2, px2)
+                iy2 = min(fy2, py2)
+                if ix2 > ix1 and iy2 > iy1:
+                    inter_area = (ix2 - ix1) * (iy2 - iy1)
+                    if (inter_area / f_area) > 0.35:
+                        return False
+
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        mean_hue = float(np.mean(hsv[:, :, 0])) # 0-180 en OpenCV
+        mean_sat = float(np.mean(hsv[:, :, 1]))
+        mean_val = float(np.mean(hsv[:, :, 2]))
+
+        mean_b = float(np.mean(crop[:, :, 0]))
+        mean_g = float(np.mean(crop[:, :, 1]))
+        mean_r = float(np.mean(crop[:, :, 2]))
+
+        # Cas 1 : "wildfire" (flamme / feu)
+        if class_name == "wildfire":
+            # Seuil de confiance plus strict pour éviter les faux positifs d'intérieur
+            if conf < 0.68:
+                return False
+
+            # Filtre anti-infrarouge NoIR / teintes violettes ou roses :
+            # Une vraie flamme a R > G et R >> B (jaune/orange/rouge).
+            # Le rose/magenta des caméras NoIR a beaucoup de bleu (B >= G ou B > R - 30).
+            if mean_b >= mean_g or mean_b > (mean_r - 25):
+                return False
+
+            # Dans l'espace HSV, la flamme doit être rouge/orange/jaune (Hue <= 26 ou Hue >= 170)
+            if 26 < mean_hue < 170:
+                return False
+
+            # La flamme a une luminosité et une saturation réelles
+            if mean_sat < 50 or mean_val < 100:
+                return False
+
+        # Cas 2 : "smoke" (fumée)
+        if class_name == "smoke":
+            if conf < 0.55:
+                return False
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+            texture_std = float(np.std(gray))
+            if mean_val > 175 and mean_sat < 35 and texture_std < 18 and conf < 0.70:
+                return False
+
+        return True
+    except Exception:
+        return True
+
+def _ai_worker_loop():
+    global _current_raw_frame, _current_boxes, latest_detection
+    last_ras_log = 0.0
+    while True:
+        frame_to_process = None
+        with _ai_lock:
+            if _current_raw_frame is not None:
+                frame_to_process = _current_raw_frame.copy()
+        
+        if frame_to_process is None or _model is None or _person_model is None:
+            time.sleep(0.05)
+            continue
+            
+        try:
+            # 1. Inférence Personne en priorité
+            results_person = _person_model.predict(source=frame_to_process, classes=[0], conf=0.35, verbose=False)
+            person_boxes_raw = []
+            person_detected = False
+            max_person_conf = 0.0
+
+            new_boxes = []
+            if len(results_person) > 0 and len(results_person[0].boxes) > 0:
+                for box in results_person[0].boxes:
+                    px1, py1, px2, py2 = [int(v) for v in box.xyxy[0].tolist()]
+                    conf = float(box.conf[0])
+                    if conf > max_person_conf:
+                        max_person_conf = conf
+                    person_detected = True
+                    person_boxes_raw.append((px1, py1, px2, py2))
+                    new_boxes.append((px1, py1, px2, py2, f"Personne {int(conf * 100)}%", (255, 0, 0)))
+
+            # 2. Inférence Feu
+            results_fire = _model.predict(source=frame_to_process, conf=0.45, verbose=False)
+            fire_detected = False
+            max_fire_conf = 0.0
+            h, w = frame_to_process.shape[:2]
+
+            if len(results_fire) > 0 and len(results_fire[0].boxes) > 0:
+                for box in results_fire[0].boxes:
+                    x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].tolist()]
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(w, x2), min(h, y2)
+                    crop = frame_to_process[y1:y2, x1:x2]
+
+                    conf = float(box.conf[0])
+                    cls_id = int(box.cls[0])
+                    class_name = _model.names[cls_id] if hasattr(_model, 'names') else "feu"
+
+                    # Filtre anti-faux-positifs avec rejet de chevauchement sur personne
+                    if not validate_fire_or_smoke(crop, class_name, conf, person_boxes=person_boxes_raw, fire_box=(x1, y1, x2, y2)):
+                        continue
+
+                    fire_detected = True
+                    if conf > max_fire_conf:
+                        max_fire_conf = conf
+
+                    label_text = "Feu" if class_name == "wildfire" else "Fumee"
+                    color = (0, 69, 255) if class_name == "wildfire" else (0, 140, 255)
+                    new_boxes.append((x1, y1, x2, y2, f"{label_text} {int(conf * 100)}%", color))
+
+            with _ai_lock:
+                _current_boxes = new_boxes
+
+            now = time.time()
+
+            # Alertes & Captures photo automatiques sur détection de Feu
+            if fire_detected:
+                confidence = round(max_fire_conf * 100, 1)
+                # Cooldown photo : 1 photo toutes les 4 secondes tant que le feu est visible
+                if now - latest_detection.get("fire_snap_ts", 0) > 4.0:
+                    latest_detection["fire_snap_ts"] = now
+                    snap_frame = frame_to_process.copy()
+                    for (bx1, by1, bx2, by2, blabel, bcolor) in new_boxes:
+                        cv2.rectangle(snap_frame, (bx1, by1), (bx2, by2), bcolor, 2)
+                        cv2.putText(snap_frame, blabel, (bx1, max(20, by1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, bcolor, 2)
+                    save_capture_async("smoke", "fire", confidence, "Raspberry 4 (Fumée)", snap_frame)
+
+                latest_detection["fire"] = True
+                latest_detection["fire_ts"] = now
+                print(f"[VIDEO] ALERTE : Fumée confirmée ! (Confiance max : {confidence}%)")
+            else:
+                if now - latest_detection.get("fire_ts", 0) > 4.0:
+                    latest_detection["fire"] = False
+
+            # Alertes & Captures photo automatiques sur détection de Personne
+            if person_detected:
+                confidence = round(max_person_conf * 100, 1)
+                # Cooldown photo : 1 photo toutes les 4 secondes tant qu'une personne est présente
+                if now - latest_detection.get("person_snap_ts", 0) > 4.0:
+                    latest_detection["person_snap_ts"] = now
+                    snap_frame = frame_to_process.copy()
+                    for box in results_person[0].boxes:
+                        bx1, by1, bx2, by2 = [int(v) for v in box.xyxy[0].tolist()]
+                        bconf = float(box.conf[0])
+                        cv2.rectangle(snap_frame, (bx1, by1), (bx2, by2), (255, 0, 0), 2)
+                        cv2.putText(snap_frame, f"Personne {int(bconf * 100)}%", (bx1, max(20, by1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+                    save_capture_async("person", "warn", confidence, "Raspberry 4 (Personne)", snap_frame)
+
+                latest_detection["person"] = True
+                latest_detection["person_ts"] = now
+                print(f"[VIDEO] INTRUSION : Personne détectée ! (Confiance max : {confidence}%)")
+            else:
+                if now - latest_detection.get("person_ts", 0) > 4.0:
+                    latest_detection["person"] = False
+
+            if not fire_detected and not person_detected:
+                if now - last_ras_log > 8.0:
+                    print("[SURVEILLANCE] Surveillance active en arrière-plan")
+                    last_ras_log = now
+
+            time.sleep(0.03)
+        except Exception as e:
+            print(f"Erreur Worker IA: {e}")
+            time.sleep(0.1)
+
+def _ensure_ai_worker():
+    global _ai_thread_started
+    if not _ai_thread_started:
+        t = threading.Thread(target=_ai_worker_loop, daemon=True, name="YOLO_Inference_Worker")
+        t.start()
+        _ai_thread_started = True
+
 def generate_video_stream(camera_url: str):
-    global latest_detection
+    global _current_raw_frame
     if _model is None:
         print("Modèle non chargé, impossible de traiter la vidéo.")
         return
 
-    print(f"Tentative de connexion au flux {camera_url} avec OpenCV...")
-    
-    try:
-        # cv2.VideoCapture est beaucoup plus fiable pour parser l'authentification Digest et le MJPEG des caméras Axis
-        cap = cv2.VideoCapture(camera_url)
-        if not cap.isOpened():
-            raise Exception("Impossible d'ouvrir le flux vidéo avec OpenCV")
-            
-        frame_count = 0
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                raise Exception("Perte du flux vidéo ou fin du stream")
-                
-            frame_count += 1
-            if frame_count % 10 != 0:
-                continue
-                
-            # Optimisation: Baisser la résolution pour alléger l'encodage et le traitement
-            frame = cv2.resize(frame, (640, 480))
-            
-            # Inférence YOLO (Feu & Personne)
-            results_fire = _model.predict(source=frame, conf=0.25, verbose=False)
-            results_person = _person_model.predict(source=frame, classes=[0], conf=0.30, verbose=False)
-            
-            annotated_frame = results_fire[0].plot()
-            
-            # Gestion Personnes
-            person_detected = False
-            max_person_conf = 0.0
-            if len(results_person) > 0 and len(results_person[0].boxes) > 0:
-                person_detected = True
-                for box in results_person[0].boxes:
-                    x1, y1, x2, y2 = box.xyxy[0].tolist()
-                    conf = float(box.conf[0])
-                    if conf > max_person_conf:
-                        max_person_conf = conf
-                    cls_id = int(box.cls[0])
-                    class_name = _person_model.names[cls_id] if hasattr(_person_model, 'names') else "person"
-                    cv2.rectangle(annotated_frame, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0), 2)
-                    label = f"{class_name} {conf:.2f}"
-                    cv2.putText(annotated_frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-            
-            # Gestion Indépendante : Feu
-            fire_detected = False
-            max_fire_conf = 0.0
-            if len(results_fire) > 0 and len(results_fire[0].boxes) > 0:
-                fire_detected = True
-                max_fire_conf = max([float(box.conf) for box in results_fire[0].boxes])
-                
-            if fire_detected:
-                confidence = round(max_fire_conf * 100, 1)
-                if not latest_detection.get("fire", False):
-                    save_alert_async("fire", "AXIS M1065-L (Locale)", confidence, "46.2276°N 2.2137°E")
-                latest_detection["fire"] = True
-                latest_detection["fire_ts"] = time.time()
-                print(f"[VIDEO] 🔥 ALERTE : Feu/Fumée détectée ! (Confiance max : {confidence}%)")
-            else:
-                if time.time() - latest_detection.get("fire_ts", 0) > 5.0:
-                    latest_detection["fire"] = False
+    _ensure_ai_worker()
 
-            # Gestion Indépendante : Personne
-            if person_detected:
-                confidence = round(max_person_conf * 100, 1)
-                if not latest_detection.get("person", False):
-                    save_alert_async("warn", "AXIS M1065-L (Personne)", confidence, "46.2276°N 2.2137°E")
-                latest_detection["person"] = True
-                latest_detection["person_ts"] = time.time()
-                print(f"[VIDEO] 👤 INTRUSION : Personne détectée ! (Confiance max : {confidence}%)")
-            else:
-                if time.time() - latest_detection.get("person_ts", 0) > 5.0:
-                    latest_detection["person"] = False
-                    
-            if not fire_detected and not person_detected:
-                if frame_count % 30 == 0:
-                    print("[VIDEO] 🟢 RAS - Surveillance vidéo normale")
-                
-            # Encodage en JPEG
-            ret, buffer = cv2.imencode('.jpg', annotated_frame)
+    # Normalisation du protocole pour OpenCV / FFmpeg (ex: syntaxe VLC tcp/h264:// -> tcp://)
+    if camera_url and camera_url.startswith("tcp/h264://"):
+        camera_url = "tcp://" + camera_url[len("tcp/h264://"):]
+
+    # Si l'URL HTTP pointe vers la racine d'un serveur caméra (ex: :8080), basculer vers stream.mjpg
+    if camera_url and (camera_url.startswith("http://") or camera_url.startswith("https://")):
+        if camera_url.rstrip("/").endswith(":8080"):
+            camera_url = camera_url.rstrip("/") + "/stream.mjpg"
+
+    while True:
+        cap = None
+        try:
+            print(f"Tentative de connexion au flux {camera_url} avec OpenCV...")
+            cap = cv2.VideoCapture(camera_url)
+            if not cap.isOpened() and (camera_url.startswith("http://") or camera_url.startswith("https://")) and not camera_url.endswith(".mjpg"):
+                alt_url = camera_url.rstrip("/") + "/stream.mjpg"
+                cap = cv2.VideoCapture(alt_url)
+                if cap.isOpened():
+                    camera_url = alt_url
+            if not cap.isOpened():
+                raise Exception("Flux indisponible (connexion impossible)")
+
+            print("Connexion établie. Diffusion fluide du flux vidéo...")
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    raise Exception("Perte du flux video ou fin du stream")
+
+                # Formatage standard
+                if frame.shape[0] != 480 or frame.shape[1] != 640:
+                    frame = cv2.resize(frame, (640, 480))
+
+                # Transmettre la frame au thread IA et récupérer les dernières boîtes
+                with _ai_lock:
+                    _current_raw_frame = frame
+                    boxes = list(_current_boxes)
+
+                # Dessiner les boîtes de détection sur l'image en temps réel (instantané, < 0.1ms)
+                for (x1, y1, x2, y2, label, color) in boxes:
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                    cv2.putText(frame, label, (x1, max(15, y1 - 8)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+                # Encodage JPEG rapide et envoi immédiat (fluide à 25-30 FPS réels)
+                ret_enc, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                if ret_enc:
+                    frame_bytes = buffer.tobytes()
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n'
+                           b'Content-Length: ' + str(len(frame_bytes)).encode() + b'\r\n\r\n' + 
+                           frame_bytes + b'\r\n')
+
+        except Exception as e:
+            error_img = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(error_img, "CAMFIRE - EN ATTENTE DU FLUX", (40, 180), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 165, 255), 2, cv2.LINE_AA)
+            cv2.putText(error_img, f"Cible: {camera_url}", (40, 230), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
+            cv2.putText(error_img, "En attente du demarrage du stream sur le Pi...", (40, 270), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 220, 120), 1, cv2.LINE_AA)
+            cv2.putText(error_img, f"Statut: {str(e)[:48]}", (40, 320), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 255), 1, cv2.LINE_AA)
+            ret, buffer = cv2.imencode('.jpg', error_img)
             if ret:
                 frame_bytes = buffer.tobytes()
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n'
                        b'Content-Length: ' + str(len(frame_bytes)).encode() + b'\r\n\r\n' + 
                        frame_bytes + b'\r\n')
-    except Exception as e:
-        print(f"Erreur/Perte du flux vidéo: {e}")
-        error_img = np.zeros((480, 640, 3), dtype=np.uint8)
-        cv2.putText(error_img, "ERREUR: CAMERA", (50, 200), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3, cv2.LINE_AA)
-        cv2.putText(error_img, str(e)[:60], (50, 260), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
-        ret, buffer = cv2.imencode('.jpg', error_img)
-        if ret:
-            # Yield several times so the browser doesn't close the stream immediately and shows the error
-            for _ in range(10):
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-                time.sleep(0.5)
+            time.sleep(2)
+        finally:
+            if cap is not None:
+                cap.release()
 
 # Initialisation du modèle dès le chargement du fichier (au démarrage du serveur)
 print("--- DÉMARRAGE DU SERVICE IA (YOLO) ---")

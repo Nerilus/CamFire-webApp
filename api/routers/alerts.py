@@ -15,7 +15,9 @@ def get_all_alerts(db: Session = Depends(get_db)):
             "location": alert.location,
             "date": alert.date.isoformat(),
             "confidence": alert.confidence,
-            "coords": alert.coords
+            "coords": alert.coords,
+            "image_url": alert.image_url,
+            "detection_type": alert.detection_type or "fire"
         }
         for alert in alerts
     ]

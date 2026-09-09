@@ -2,24 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { useAuth } from '../context/AuthContext';
+import { PairDevice } from './PairDevice';
+import { FlameIcon } from '../components/icons';
 
 export const Auth: React.FC = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
   const [isLogin, setIsLogin] = useState<boolean>(true);
+  const [signupStep, setSignupStep] = useState<number>(1);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
+  
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Redirection si l'utilisateur est déjà connecté
+  // Redirection si l'utilisateur arrive sur /auth déjà connecté (sauf s'il est en cours d'appairage à l'étape 2)
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && signupStep !== 2) {
       navigate('/home', { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, signupStep, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,13 +45,11 @@ export const Auth: React.FC = () => {
         setSuccess("Connexion réussie ! Redirection...");
         navigate('/home', { replace: true });
       } else {
-        // Flux Inscription
+        // Flux Inscription : création du compte, connexion et affichage immédiat de l'étape d'appairage
         await authService.register(email, password);
-        // Connexion automatique après inscription
         const token = await authService.login(email, password);
         login(token);
-        setSuccess("Compte créé avec succès ! Redirection...");
-        navigate('/home', { replace: true });
+        setSignupStep(2);
       }
     } catch (err: any) {
       setError(err.message || 'Une erreur est survenue.');
@@ -56,16 +58,21 @@ export const Auth: React.FC = () => {
     }
   };
 
+  // Affichage direct de la page de liaison Raspberry Pi dès la validation de l'inscription !
+  if (!isLogin && signupStep === 2) {
+    return <PairDevice onComplete={() => navigate('/home', { replace: true })} />;
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
         {/* En-tête de l'application */}
         <div style={styles.header}>
           <div style={styles.logoContainer}>
-            <span style={styles.logoIcon}>🔥</span>
+            <FlameIcon size={28} />
           </div>
           <h1 style={styles.title}>CamFire</h1>
-          <p style={styles.subtitle}>Système Intelligent de Télésurveillance</p>
+          <p style={styles.subtitle}>Système Intelligent de Télésurveillance Incendie</p>
         </div>
 
         {/* Formulaire */}
@@ -127,6 +134,7 @@ export const Auth: React.FC = () => {
             type="button"
             onClick={() => {
               setIsLogin(!isLogin);
+              setSignupStep(1);
               setError(null);
               setSuccess(null);
             }}
@@ -156,7 +164,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#16161e', // Carte grise anthracite texturée
     borderRadius: '16px',
     width: '100%',
-    maxWidth: '400px',
+    maxWidth: '460px',
     padding: '32px 24px',
     boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
     border: '1px solid #232330',
@@ -195,7 +203,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   form: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '18px',
+    gap: '16px',
   },
   inputGroup: {
     display: 'flex',
@@ -207,16 +215,71 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '13px',
     fontWeight: 500,
   },
+  labelSmall: {
+    color: '#94a3b8',
+    fontSize: '12px',
+    fontWeight: 600,
+  },
   input: {
     backgroundColor: '#1c1c26',
     border: '1px solid #2d2d3d',
     borderRadius: '8px',
     padding: '12px 14px',
-    fontSize: '15px',
+    fontSize: '14px',
     color: '#ffffff',
     outline: 'none',
     transition: 'border-color 0.2s',
     boxSizing: 'border-box',
+  },
+  inputMono: {
+    backgroundColor: '#12121a',
+    border: '1px solid #38384f',
+    borderRadius: '8px',
+    padding: '10px 12px',
+    fontSize: '13px',
+    fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+    letterSpacing: '0.8px',
+    color: '#38bdf8',
+    outline: 'none',
+    boxSizing: 'border-box',
+  },
+  deviceBox: {
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    border: '1px solid rgba(255, 69, 0, 0.3)',
+    borderRadius: '12px',
+    padding: '14px',
+    boxSizing: 'border-box',
+  },
+  deviceBoxHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  deviceCheckboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    cursor: 'pointer',
+  },
+  deviceBoxTitle: {
+    color: '#ffffff',
+    fontSize: '14px',
+    fontWeight: 600,
+  },
+  secureBadge: {
+    fontSize: '11px',
+    fontWeight: 700,
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    color: '#4ade80',
+    border: '1px solid rgba(34, 197, 94, 0.35)',
+    borderRadius: '20px',
+    padding: '2px 8px',
+  },
+  deviceHelpText: {
+    color: '#64748b',
+    fontSize: '12px',
+    margin: 0,
+    lineHeight: '1.4',
   },
   submitBtn: {
     background: 'linear-gradient(135deg, #ff4500 0%, #ff8c00 100%)', // Dégradé Inferno
@@ -227,7 +290,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '15px',
     fontWeight: 600,
     cursor: 'pointer',
-    marginTop: '8px',
+    marginTop: '6px',
     boxShadow: '0 4px 12px rgba(255, 69, 0, 0.3)',
     transition: 'opacity 0.2s',
   },
@@ -251,7 +314,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   toggleContainer: {
     textAlign: 'center',
-    marginTop: '24px',
+    marginTop: '20px',
     display: 'flex',
     flexDirection: 'column',
     gap: '4px',
