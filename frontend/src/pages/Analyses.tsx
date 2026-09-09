@@ -1,26 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { fetchForecast, type ZoneForecast } from '../services/weatherService';
-import { cameras } from '../services/mockData';
-import { FlameIcon } from '../components/icons';
+import { siteService, type Site } from '../services/siteService';
+import { FlameIcon, RadioIcon, PinIcon, ThermometerIcon } from '../components/icons';
 import './Analyses.css';
 
 export const Analyses: React.FC = () => {
   const [forecasts, setForecasts] = useState<ZoneForecast[]>([]);
-  const [selectedCamId, setSelectedCamId] = useState<string>('cam-1');
+  const [sites, setSites] = useState<Site[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
-      const data = await fetchForecast();
-      setForecasts(data);
-      setIsLoading(false);
+      try {
+        const [userSites, data] = await Promise.all([
+          siteService.getSites().catch(() => []),
+          fetchForecast().catch(() => [])
+        ]);
+        setSites(userSites);
+        if (userSites.length > 0) {
+          setSelectedSiteId(userSites[0].id);
+        }
+        setForecasts(data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
     };
     loadData();
   }, []);
 
-  const activeForecast = forecasts.find(f => f.id === selectedCamId)?.forecast || [];
+  const activeForecast = forecasts.length > 0 ? forecasts[0].forecast : [];
 
   // Format the data for recharts
   const chartData = activeForecast.map(f => {
@@ -36,7 +49,7 @@ export const Analyses: React.FC = () => {
     };
   });
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="custom-tooltip">
@@ -60,19 +73,31 @@ export const Analyses: React.FC = () => {
       </div>
 
       <div className="zone-selector">
-        {cameras.map(cam => (
-          <button 
-            key={cam.id} 
-            className={`zone-btn ${selectedCamId === cam.id ? 'active' : ''}`}
-            onClick={() => setSelectedCamId(cam.id)}
-          >
-            {cam.name}
+        {sites.length > 0 ? (
+          sites.map(s => (
+            <button 
+              key={s.id} 
+              className={`zone-btn ${selectedSiteId === s.id ? 'active' : ''}`}
+              onClick={() => setSelectedSiteId(s.id)}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                {s.device ? <RadioIcon size={13} /> : <PinIcon size={13} />}
+                {s.name}
+              </span>
+            </button>
+          ))
+        ) : (
+          <button className="zone-btn active">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <RadioIcon size={13} />
+              Surveillance Active (Raspberry Pi)
+            </span>
           </button>
-        ))}
+        )}
       </div>
 
       {isLoading ? (
-        <div style={{ color: 'var(--text-dim)', textAlign: 'center', marginTop: '40px' }}>Chargement des modèles IA météo...</div>
+        <div style={{ color: 'var(--text-dim)', textAlign: 'center', marginTop: '40px' }}>Chargement des prévisions météorologiques...</div>
       ) : chartData.length > 0 ? (
         <>
           <div className="chart-container">
@@ -101,8 +126,8 @@ export const Analyses: React.FC = () => {
           </div>
 
           <div className="chart-container">
-            <div className="chart-title">
-              🌡️ Température & Conditions
+            <div className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ThermometerIcon size={16} /> Température & Conditions
             </div>
             <div className="chart-wrapper">
               <ResponsiveContainer width="100%" height="100%">

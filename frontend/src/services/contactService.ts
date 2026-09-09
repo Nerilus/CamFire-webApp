@@ -16,13 +16,24 @@ const getHeaders = () => {
   };
 };
 
+const handleResponse = async (response: Response, errorMsg: string) => {
+  if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new Event('camfire_unauthorized'));
+    }
+    throw new Error(errorMsg);
+  }
+  return response;
+};
+
 export const contactService = {
   async getContacts(): Promise<EmergencyContact[]> {
     const response = await fetch(`${API_URL}/contacts/`, {
       method: 'GET',
       headers: getHeaders(),
     });
-    if (!response.ok) throw new Error('Erreur lors de la récupération des contacts');
+    await handleResponse(response, 'Erreur lors de la récupération des contacts');
     return response.json();
   },
 
@@ -32,7 +43,7 @@ export const contactService = {
       headers: getHeaders(),
       body: JSON.stringify({ name, phone, role }),
     });
-    if (!response.ok) throw new Error('Erreur lors de l\'ajout du contact');
+    await handleResponse(response, 'Erreur lors de l\'ajout du contact');
     return response.json();
   },
 
@@ -41,6 +52,6 @@ export const contactService = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    if (!response.ok) throw new Error('Erreur lors de la suppression du contact');
+    await handleResponse(response, 'Erreur lors de la suppression du contact');
   }
 };

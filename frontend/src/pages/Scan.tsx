@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FlashIcon, RefreshIcon, GalleryIcon, UploadIcon } from '../components/icons';
+import { FlashIcon, RefreshIcon, GalleryIcon, UploadIcon, XIcon } from '../components/icons';
 import { FireAlertModal } from '../components/FireAlertModal';
-import { scanHistory } from '../services/mockData';
 import { useMedia } from '../context/MediaContext';
 import { scanService } from '../services/scanService';
 import './Scan.css';
@@ -17,7 +16,6 @@ export const Scan: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [facingMode, setFacingMode] = useState<FacingMode>('environment');
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -156,10 +154,10 @@ export const Scan: React.FC = () => {
         {capturedUrl && (
           <button 
             onClick={resetScanner}
-            style={{ position: 'absolute', top: '15px', right: '15px', zIndex: 10, background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', color: 'white', width: '36px', height: '36px', cursor: 'pointer', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ position: 'absolute', top: '15px', right: '15px', zIndex: 10, background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: '50%', color: 'white', width: '36px', height: '36px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title="Fermer l'image"
           >
-            ✕
+            <XIcon size={18} />
           </button>
         )}
 
@@ -236,7 +234,14 @@ export const Scan: React.FC = () => {
 
       {fireDetected && (
         <FireAlertModal 
-          record={scanHistory[0]} 
+          record={{
+            id: 'scan-live',
+            status: 'fire',
+            location: 'Caméra Mobile / Scan Direct',
+            date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+            coords: 'Position de scan',
+            confidence: Math.round(confidence * 100)
+          }} 
           onClose={() => setFireDetected(false)}
           imageUrl={gradcamImage || capturedUrl}
           confidence={confidence}

@@ -52,6 +52,23 @@
   position: relative;
   display: flex;
   gap: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.timeline-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateX(4px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.timeline-item:active {
+  transform: translateX(2px) scale(0.99);
 }
 
 .timeline-icon {
@@ -84,8 +101,49 @@
   justify-content: space-between;
 }
 
+.timeline-top-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-photo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  letter-spacing: 0.3px;
+}
+
+.timeline-share-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.timeline-share-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .timeline-share {
   color: var(--text-faint);
+  transition: color 0.15s ease;
+}
+
+.timeline-share:hover {
+  color: #fff;
 }
 
 .timeline-location {
@@ -93,6 +151,47 @@
   font-size: 15px;
   margin-top: 4px;
 }
+
+.timeline-photo-card {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.timeline-photo-thumb-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  height: 140px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.timeline-photo-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.timeline-item:hover .timeline-photo-thumb {
+  transform: scale(1.04);
+}
+
+.timeline-photo-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, 0.8) 100%);
+  display: flex;
+  align-items: flex-end;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  gap: 6px;
+}
+
 
 .timeline-date {
   color: var(--text-faint);
