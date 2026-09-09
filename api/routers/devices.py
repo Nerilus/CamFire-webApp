@@ -13,6 +13,7 @@ import jwt
 
 from db.database import get_db
 from db.models import User, Device, UserDevice
+from services.email import send_device_paired_email, send_device_unpaired_email
 from schemas.device_schema import (
     DevicePairRequest,
     DeviceResponse,
@@ -404,6 +405,8 @@ def pair_device(
     device.is_paired = True
     db.commit()
 
+    send_device_paired_email(current_user.email, custom_name, device.device_id)
+
     return DeviceResponse(
         id=device.id,
         device_id=device.device_id,
@@ -461,6 +464,7 @@ def unpair_device(
         remaining_uds[0].role = "owner"
 
     db.commit()
+    send_device_unpaired_email(current_user.email, ud.custom_name or device.name, device.device_id)
     return {"message": f"L'appareil '{device_id}' a été dissocié avec succès de votre compte."}
 
 # ---------------------------------------------------------------------------
