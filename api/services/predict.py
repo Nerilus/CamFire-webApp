@@ -12,6 +12,7 @@ import torch
 from PIL import Image
 from ultralytics import YOLO
 from ultralytics.nn.tasks import DetectionModel
+from services.discord import send_discord_alert_sync
 
 # Contournement de sécurité PyTorch 2.6+ pour charger le modèle YOLO local
 try:
@@ -229,6 +230,10 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                 db.add(alert)
                 db.commit()
                 print(f"[CAPTURE] Snapshot enregistrée: {filename} -> Type: {detection_type.upper()} ({confidence}%) à {location}")
+                
+                # Notification Discord
+                alert_type_mapped = "fire" if status == "fire" else ("warn" if status == "warn" else "unknown")
+                send_discord_alert_sync(alert_type_mapped, location, confidence, image_url)
             except Exception as dbe:
                 print(f"Erreur DB Capture: {dbe}")
             finally:

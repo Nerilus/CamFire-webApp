@@ -17,3 +17,6 @@ CAMERA_URL = os.getenv("CAMERA_URL", "http://172.20.10.2:8080/")
 
 # Clé secrète de provisioning machine-to-cloud pour Raspberry Pi
 DEVICE_PROVISION_KEY = os.getenv("DEVICE_PROVISION_KEY", "cf-factory-sec-2026-pi4-prod-key")
+
+# Discord Webhook URL pour les notifications
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
