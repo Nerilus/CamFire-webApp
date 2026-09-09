@@ -8,6 +8,7 @@ from db.models import User
 from schemas.user_schema import UserCreate, UserResponse, Token, UserUpdate, PasswordUpdate
 from core.security import verify_password, get_password_hash, create_access_token
 from core.config import SECRET_KEY, ALGORITHM
+from services.email import send_device_paired_email, send_welcome_email
 
 router = APIRouter(
     prefix="/auth",
@@ -86,6 +87,10 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         device.is_paired = True
         db.commit()
         db.refresh(new_user)
+
+    send_welcome_email(new_user.email)
+    if device:
+        send_device_paired_email(new_user.email, custom_name, device.device_id)
 
     return new_user
 

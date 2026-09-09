@@ -15,5 +15,13 @@ SQLALCHEMY_DATABASE_URL = os.getenv(
 # URL du flux caméra (supporte HTTP/MJPEG, TCP, RTSP)
 CAMERA_URL = os.getenv("CAMERA_URL", "http://172.20.10.2:8080/")
 
+# Configuration SMTP optionnelle pour les e-mails de compte et d'appareil.
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", "").strip()
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+
 # Clé secrète de provisioning machine-to-cloud pour Raspberry Pi
 DEVICE_PROVISION_KEY = os.getenv("DEVICE_PROVISION_KEY", "cf-factory-sec-2026-pi4-prod-key")
