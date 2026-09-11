@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SmokeIcon, WarningIcon, ChevronRightIcon } from '../components/icons';
 import { FireAlertModal, type AlertRecord } from '../components/FireAlertModal';
+import { API_URL } from '../config/api';
 import './Alerts.css';
 
 export const Alerts: React.FC = () => {
@@ -11,8 +12,7 @@ export const Alerts: React.FC = () => {
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        const res = await fetch(`${apiUrl}/alerts/`);
+        const res = await fetch(`${API_URL}/alerts/`);
         if (res.ok) {
           const data = await res.json();
           // Formater la date pour l'affichage (ex: 21 juillet 2026, 18:05)
@@ -25,7 +25,7 @@ export const Alerts: React.FC = () => {
 
             let fullImageUrl = alert.image_url;
             if (fullImageUrl && !fullImageUrl.startsWith('http') && !fullImageUrl.startsWith('data:')) {
-              fullImageUrl = `${apiUrl}${fullImageUrl.startsWith('/') ? '' : '/'}${fullImageUrl}`;
+              fullImageUrl = `${API_URL}${fullImageUrl.startsWith('/') ? '' : '/'}${fullImageUrl}`;
             }
 
             return {
