@@ -34,7 +34,7 @@ export const authService = {
   /**
    * Connexion (Attend du x-www-form-urlencoded)
    */
-  async login(username: string, password: string): Promise<string> {
+  async login(username: string, password: string): Promise<{ message: string; email: string }> {
     const params = new URLSearchParams();
     params.append('username', username);
     params.append('password', password);
@@ -50,6 +50,19 @@ export const authService = {
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.detail || 'Identifiants incorrects');
+    }
+
+    return await response.json();
+  },
+  async verifyOtp(email: string, otp: string): Promise<string> {
+    const response = await fetch(
+      `${API_URL}/auth/verify-otp?email=${encodeURIComponent(email)}&otp=${encodeURIComponent(otp)}`,
+      { method: 'POST' }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Code invalide ou expiré');
     }
 
     const data = await response.json();
