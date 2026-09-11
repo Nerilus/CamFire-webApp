@@ -16,6 +16,9 @@ COPY requirements.txt .
 # Mise à jour pip pour éviter les problèmes de hash check (pip 24 bug)
 RUN pip install --upgrade pip
 
+# Installation de PyTorch CPU-only ultra-léger (économise ~5 Go en évitant les lourdes dépendances NVIDIA CUDA sur VPS)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
 # Installation des dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 

@@ -1,0 +1,75 @@
+services:
+  # Frontend React SPA servi par Nginx (Reverse Proxy & Cache)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: camfire-frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - camfire-network
+
+  # Backend FastAPI avec Uvicorn
+  backend:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: camfire-backend
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-camfire_user}:${POSTGRES_PASSWORD:-camfire_secure_pass_2026}@db:5432/${POSTGRES_DB:-camfire_prod_db}
+      - SECRET_KEY=${SECRET_KEY:-votre_cle_secrete_ultra_securisee_a_definir_dans_env}
+      - CAMERA_URL=${CAMERA_URL:-https://safely-virgin-mistress-staying.trycloudflare.com/stream.mjpg}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-43200}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-CamFire Security <no-reply@camfire.local>}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
+      - OTP_EXPIRE_MINUTES=${OTP_EXPIRE_MINUTES:-10}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      - YOLO_CONFIG_DIR=/tmp/Ultralytics
+    volumes:
+      - captures_data:/app/static/captures
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - camfire-network
+
+  # Base de données PostgreSQL (fermée à l'extérieur pour sécurité maximale)
+  db:
+    image: postgres:15-alpine
+    container_name: camfire-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-camfire_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-camfire_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-camfire_prod_db}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-camfire_user} -d ${POSTGRES_DB:-camfire_prod_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - camfire-network
+
+volumes:
+  postgres_prod_data:
+  captures_data:
+
+networks:
+  camfire-network:
+    driver: bridge
