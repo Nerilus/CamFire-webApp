@@ -68,7 +68,7 @@ class Device(Base):
     device_id = Column(String(64), unique=True, index=True, nullable=False)
     name = Column(String, nullable=False, default="Raspberry 4")
     hashed_pairing_code = Column(String, nullable=False)
-    stream_url = Column(String, nullable=False, default="http://172.20.10.2:8080/")
+    stream_url = Column(String, nullable=False, default="https://safely-virgin-mistress-staying.trycloudflare.com/stream.mjpg")
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     is_paired = Column(Boolean, default=False, nullable=False)
     paired_at = Column(DateTime, nullable=True)

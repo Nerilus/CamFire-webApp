@@ -10,7 +10,7 @@ class DevicePairRequest(BaseModel):
 class DeviceProvisionRequest(BaseModel):
     device_id: str
     pairing_code: str
-    stream_url: Optional[str] = "http://172.20.10.2:8080/"
+    stream_url: Optional[str] = "https://safely-virgin-mistress-staying.trycloudflare.com/stream.mjpg"
     name: Optional[str] = "Raspberry 4"
 
 class DeviceUnpairRequest(BaseModel):

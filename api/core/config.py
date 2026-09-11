@@ -13,7 +13,7 @@ SQLALCHEMY_DATABASE_URL = os.getenv(
 )
 
 # URL du flux caméra (supporte HTTP/MJPEG, TCP, RTSP)
-CAMERA_URL = os.getenv("CAMERA_URL", "http://172.20.10.2:8080/")
+CAMERA_URL = os.getenv("CAMERA_URL", "https://safely-virgin-mistress-staying.trycloudflare.com/stream.mjpg")
 
 
 # Clé secrète de provisioning machine-to-cloud pour Raspberry Pi

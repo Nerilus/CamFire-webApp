@@ -22,7 +22,7 @@ from schemas.user_schema import (
     Disable2FARequest,
 )
 from core.security import verify_password, get_password_hash, create_access_token
-from core.config import SECRET_KEY, ALGORITHM, OTP_EXPIRE_MINUTES
+from core.config import SECRET_KEY, ALGORITHM, OTP_EXPIRE_MINUTES, CAMERA_URL
 from services.email import (
     send_otp_email,
     send_login_notification_email,
@@ -92,10 +92,23 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
             )
         device = db.query(Device).filter(Device.device_id == user_in.device_id.strip()).first()
         if not device:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Matériel '{user_in.device_id}' introuvable. Vérifiez l'ID matériel ou lancez le script agent sur le Raspberry Pi."
-            )
+            if len(user_in.pairing_code.strip()) >= 4:
+                device = Device(
+                    device_id=user_in.device_id.strip(),
+                    name=user_in.device_name.strip() if user_in.device_name else "Raspberry 4",
+                    hashed_pairing_code=get_password_hash(user_in.pairing_code.strip()),
+                    stream_url=CAMERA_URL,
+                    code_expires_at=datetime.utcnow() + timedelta(hours=24),
+                    is_paired=False
+                )
+                db.add(device)
+                db.commit()
+                db.refresh(device)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Matériel '{user_in.device_id}' introuvable. Vérifiez l'ID matériel ou lancez le script agent sur le Raspberry Pi."
+                )
         # Un même appareil physique peut être lié à plusieurs comptes avec son code secret
         if not verify_password(user_in.pairing_code.strip(), device.hashed_pairing_code):
             raise HTTPException(
