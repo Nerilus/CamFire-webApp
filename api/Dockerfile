@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
 # Copie des fichiers de dépendances en premier pour optimiser le cache Docker
 COPY requirements.txt .
 
+# Mise à jour pip pour éviter les problèmes de hash check (pip 24 bug)
+RUN pip install --upgrade pip
+
 # Installation des dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 
