@@ -434,7 +434,7 @@ def _ai_worker_loop():
                     print("[SURVEILLANCE] Surveillance active en arrière-plan")
                     last_ras_log = now
 
-            time.sleep(0.03)
+            time.sleep(0.08)
         except Exception as e:
             print(f"Erreur Worker IA: {e}")
             time.sleep(0.1)
@@ -476,6 +476,11 @@ def generate_video_stream(camera_url: str):
             if not cap.isOpened():
                 raise Exception("Flux indisponible (connexion impossible)")
 
+            try:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
+
             print("Connexion établie. Diffusion fluide du flux vidéo...")
             while True:
                 ret, frame = cap.read()
@@ -498,7 +503,7 @@ def generate_video_stream(camera_url: str):
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
                 # Encodage JPEG rapide et envoi immédiat (fluide à 25-30 FPS réels)
-                ret_enc, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                ret_enc, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 if ret_enc:
                     frame_bytes = buffer.tobytes()
                     yield (b'--frame\r\n'
