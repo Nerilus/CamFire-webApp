@@ -21,6 +21,7 @@ from schemas.device_schema import (
     DeviceProvisionRequest,
     DeviceMemberResponse,
     DeviceHeartbeatRequest,
+    DeviceUpdateRequest,
     StreamTicketResponse,
     RefreshCodeResponse
 )
@@ -197,24 +198,23 @@ def provision_device(
             device_id=req.device_id,
             name=req.name or "Raspberry 4",
             hashed_pairing_code=get_password_hash(req.pairing_code),
-            stream_url=req.stream_url or "http://172.20.10.2:8080/",
+            stream_url=req.stream_url or CAMERA_URL,
             code_expires_at=expires_at,
             is_paired=False
         )
         db.add(dev)
         db.commit()
         return {"status": "created", "device_id": req.device_id, "expires_at": expires_at.isoformat()}
-    elif not dev.is_paired:
-        dev.hashed_pairing_code = get_password_hash(req.pairing_code)
-        dev.code_expires_at = expires_at
+    else:
         if req.stream_url:
             dev.stream_url = req.stream_url
         if req.name:
             dev.name = req.name
+        if not dev.is_paired:
+            dev.hashed_pairing_code = get_password_hash(req.pairing_code)
+            dev.code_expires_at = expires_at
         db.commit()
-        return {"status": "updated", "device_id": req.device_id, "expires_at": expires_at.isoformat()}
-    else:
-        return {"status": "already_paired", "device_id": req.device_id}
+        return {"status": "updated", "device_id": req.device_id, "stream_url": dev.stream_url}
 
 # ---------------------------------------------------------------------------
 # 6. Endpoints Utilisateurs & Appairage Sécurisé
@@ -308,6 +308,14 @@ def device_heartbeat(
     dev.last_seen_at = now_dt
     if req.cpu_temp is not None:
         dev.cpu_temp = req.cpu_temp
+    if req.stream_url and req.stream_url.strip():
+        new_stream = req.stream_url.strip()
+        if new_stream != dev.stream_url:
+            try:
+                validate_stream_url(new_stream)
+                dev.stream_url = new_stream
+            except Exception:
+                pass
 
     # 5. Gestion du sabotage physique (Tamper Switch)
     if req.tamper_detected:
@@ -441,6 +449,50 @@ def pair_device(
         cpu_temp=device.cpu_temp
     )
 
+
+
+@router.patch("/{device_id}", response_model=DeviceResponse)
+def update_device(
+    device_id: str,
+    req: DeviceUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Permet au propriétaire de renommer l'appareil ou de mettre à jour son URL de flux vidéo."""
+    dev = db.query(Device).filter(Device.device_id == device_id.strip()).first()
+    if not dev:
+        raise HTTPException(status_code=404, detail="Appareil introuvable.")
+    ud = db.query(UserDevice).filter(
+        UserDevice.user_id == current_user.id,
+        UserDevice.device_id == dev.id
+    ).first()
+    if not ud or ud.role != "owner":
+        raise HTTPException(status_code=403, detail="Seul le propriétaire de l'appareil peut modifier ces paramètres.")
+
+    if req.name and req.name.strip():
+        ud.custom_name = req.name.strip()
+        dev.name = req.name.strip()
+    if req.stream_url and req.stream_url.strip():
+        validate_stream_url(req.stream_url.strip())
+        dev.stream_url = req.stream_url.strip()
+
+    db.commit()
+    db.refresh(dev)
+
+    return DeviceResponse(
+        id=dev.id,
+        device_id=dev.device_id,
+        name=ud.custom_name or dev.name,
+        role=ud.role or "owner",
+        is_paired=True,
+        paired_at=ud.paired_at,
+        last_seen_at=dev.last_seen_at,
+        lat=dev.lat,
+        lng=dev.lng,
+        status="online" if dev.last_seen_at and (datetime.utcnow() - dev.last_seen_at).total_seconds() < 45 else "offline",
+        tamper_status=dev.tamper_status or "normal",
+        cpu_temp=dev.cpu_temp
+    )
 
 
 @router.post("/unpair/{device_id}")
