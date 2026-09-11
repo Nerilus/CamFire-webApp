@@ -22,7 +22,13 @@ try:
         conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS tamper_status VARCHAR DEFAULT 'normal';"))
         conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS cpu_temp FLOAT;"))
         conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_tamper_alert_at TIMESTAMP;"))
+        # Colonnes 2FA pour la table users
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT TRUE;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code_hash VARCHAR;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_attempts INTEGER DEFAULT 0;"))
         conn.commit()
+    print("[MIGRATION] Tables et colonnes 2FA vérifiées avec succès.")
 except Exception as e:
     print(f"[MIGRATION WARNING] {e}")
 
