@@ -1,0 +1,131 @@
+name: CI/CD CamFire Production
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  # =========================================================================
+  # 1. Validation de la Qualité du Code & Tests
+  # =========================================================================
+  quality-and-tests:
+    name: Code Quality & Build Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Récupération du code source
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configuration de l'environnement Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 🔍 Vérification de la syntaxe Python (Backend)
+        run: |
+          echo "Vérification des fichiers Python..."
+          python3 -m py_compile $(find api -name "*.py" -not -path "*/.*")
+          echo "✅ Tous les fichiers Python sont valides."
+
+      - name: ⬢ Configuration de Node.js 20 (Frontend)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 📦 Installation des dépendances NPM
+        run: npm --prefix frontend ci
+
+      - name: 🧹 Linting du Frontend
+        run: npm --prefix frontend run lint
+
+      - name: 🏗️ Compilation et Type-check du Frontend (Vite + TS)
+        run: npm --prefix frontend run build
+
+      - name: 🐳 Validation de la configuration Docker Compose Production
+        run: |
+          docker compose -f docker-compose.prod.yml config > /dev/null
+          echo "✅ docker-compose.prod.yml est valide."
+
+  # =========================================================================
+  # 2. Déploiement Continu sur le VPS (SSH)
+  # =========================================================================
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: quality-and-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 📥 Récupération du code source
+        uses: actions/checkout@v4
+
+      - name: 🔍 Vérification de la présence des Secrets de déploiement
+        id: check-secrets
+        run: |
+          if [ -n "${{ secrets.VPS_HOST }}" ] && [ -n "${{ secrets.VPS_SSH_KEY }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Secrets VPS détectés. Déploiement SSH activé."
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️ Secrets VPS non configurés dans GitHub Secrets (VPS_HOST / VPS_SSH_KEY)."
+            echo "Consultez DEPLOYMENT.md pour configurer le déploiement automatique."
+          fi
+
+      - name: 🚀 Déploiement sur le VPS via SSH
+        if: steps.check-secrets.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER || 'ubuntu' }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            DEPLOY_PATH="${{ secrets.VPS_DEPLOY_PATH || '/home/ubuntu/CamFire-webApp' }}"
+            echo "========================================================="
+            echo "🚀 Lancement du déploiement CamFire sur le VPS..."
+            echo "📂 Répertoire cible : $DEPLOY_PATH"
+            echo "========================================================="
+
+            if [ ! -d "$DEPLOY_PATH" ]; then
+              echo "❌ Erreur : Le dossier $DEPLOY_PATH n'existe pas sur le VPS."
+              echo "Veuillez d'abord cloner le dépôt dans ce dossier (voir DEPLOYMENT.md)."
+              exit 1
+            fi
+
+            cd "$DEPLOY_PATH"
+
+            # 1. Vérification du fichier d'environnement
+            if [ ! -f ".env" ]; then
+              if [ -f ".env.production.example" ]; then
+                echo "⚠️ Fichier .env absent. Initialisation depuis .env.production.example..."
+                cp .env.production.example .env
+              fi
+            fi
+
+            # 2. Récupération des dernières modifications de main
+            echo "📥 Synchronisation du code Git (main)..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            # 3. Rebuild et relance des conteneurs
+            echo "🐳 Reconstruction et démarrage des conteneurs Docker..."
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+            # 4. Nettoyage des images inutilisées
+            echo "🧹 Nettoyage des anciennes images Docker..."
+            docker image prune -f
+
+            echo "========================================================="
+            echo "✅ CamFire a été déployé avec succès sur le VPS !"
+            echo "========================================================="
