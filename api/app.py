@@ -91,19 +91,23 @@ app = FastAPI(
 # Montage du répertoire statique pour servir les photos de captures
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Configuration CORS pour autoriser le frontend (localhost, 127.0.0.1, et réseau local pour la PWA)
+# Configuration CORS pour autoriser le frontend (localhost, réseau local et domaine de production)
+cors_origins_env = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
+base_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+all_origins = list(set(base_origins + cors_origins_env))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
+    allow_origins=all_origins,
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
