@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { deviceService, type Device } from '../services/deviceService';
+import { ticketService, type Ticket } from '../services/ticketService';
 import { SettingsIcon, RadioIcon, ShieldCheckIcon, ShieldAlertIcon } from '../components/icons';
 import './Profile.css';
 
@@ -42,10 +43,27 @@ export const Profile: React.FC = () => {
   const [unpairPassword, setUnpairPassword] = useState('');
   const [isUnpairing, setIsUnpairing] = useState(false);
 
+  // Tickets
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+
   useEffect(() => {
     loadUserProfile();
     loadDevices();
+    loadTickets();
   }, []);
+
+  const loadTickets = async () => {
+    setLoadingTickets(true);
+    try {
+      const data = await ticketService.getMyTickets();
+      setTickets(data);
+    } catch (e) {
+      console.error("Erreur chargement des tickets", e);
+    } finally {
+      setLoadingTickets(false);
+    }
+  };
 
   const loadUserProfile = async () => {
     try {
@@ -563,6 +581,70 @@ export const Profile: React.FC = () => {
             {loadingPwd ? 'Mise à jour...' : 'Modifier le mot de passe'}
           </button>
         </form>
+      </section>
+
+      {/* Section Demandes d'assistance */}
+      <section className="profile-section">
+        <h2 className="profile-section-title">MES DEMANDES D'ASSISTANCE</h2>
+        {loadingTickets ? (
+          <div style={{ color: 'var(--text-dim)' }}>Chargement de vos demandes...</div>
+        ) : tickets.length === 0 ? (
+          <div style={{ color: 'var(--text-dim)', background: 'var(--bg-card)', padding: '16px', borderRadius: '12px', textAlign: 'center' }}>
+            Aucune demande d'assistance n'a été créée pour le moment.
+          </div>
+        ) : (
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '12px',
+            maxHeight: '420px',
+            overflowY: 'auto',
+            paddingRight: '8px'
+          }}>
+            {tickets.map(ticket => (
+              <div key={ticket.id} style={{ 
+                background: 'var(--bg-card)', 
+                border: '1px solid var(--border)', 
+                borderRadius: '12px', 
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ShieldAlertIcon size={16} color="var(--danger)" />
+                    <span style={{ fontWeight: 600, fontSize: '14px' }}>Demande #{ticket.id}</span>
+                  </div>
+                </div>
+                
+                <div style={{ fontSize: '13px', color: 'var(--text-dim)' }}>
+                  <strong>Localisation :</strong> {ticket.location || 'Inconnue'}
+                </div>
+                
+                {ticket.description && (
+                  <div style={{ 
+                    fontSize: '13px', 
+                    color: '#fff', 
+                    background: 'rgba(0,0,0,0.3)', 
+                    padding: '10px', 
+                    borderRadius: '8px',
+                    marginTop: '4px',
+                    borderLeft: '2px solid rgba(255,255,255,0.1)',
+                    wordBreak: 'break-word',
+                    whiteSpace: 'pre-wrap'
+                  }}>
+                    {ticket.description}
+                  </div>
+                )}
+                
+                <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '4px', textAlign: 'right' }}>
+                  Soumis le : {new Date(ticket.created_at).toLocaleString('fr-FR')}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );
