@@ -17,3 +17,12 @@ CAMERA_URL = os.getenv("CAMERA_URL", "http://172.20.10.2:8080/")
 
 # Clé secrète de provisioning machine-to-cloud pour Raspberry Pi
 DEVICE_PROVISION_KEY = os.getenv("DEVICE_PROVISION_KEY", "cf-factory-sec-2026-pi4-prod-key")
+
+# Configuration Double Authentification & SMTP Email
+OTP_EXPIRE_MINUTES = int(os.getenv("OTP_EXPIRE_MINUTES", 10))
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", "CamFire Security <no-reply@camfire.local>")
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
