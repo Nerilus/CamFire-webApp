@@ -75,6 +75,8 @@ ufw --force enable
 
 # 6. Préparation du répertoire de déploiement
 echo "📁 Préparation du dossier de l'application..."
+git config --global --add safe.directory "$DEPLOY_DIR" || true
+sudo -u "$TARGET_USER" git config --global --add safe.directory "$DEPLOY_DIR" 2>/dev/null || true
 if [ ! -d "$DEPLOY_DIR" ]; then
     echo "📥 Clonage du dépôt Git CamFire-webApp..."
     git clone https://github.com/Nerilus/CamFire-webApp.git "$DEPLOY_DIR"
