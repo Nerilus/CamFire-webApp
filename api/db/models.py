@@ -15,6 +15,12 @@ class User(Base):
     otp_expires_at = Column(DateTime, nullable=True)
 
     
+    # Sécurité & Double Authentification (2FA)
+    is_2fa_enabled = Column(Boolean, default=True, nullable=False)
+    otp_code_hash = Column(String, nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+    otp_attempts = Column(Integer, default=0, nullable=False)
+
     contacts = relationship("EmergencyContact", back_populates="user", cascade="all, delete-orphan")
     user_devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
     sites = relationship("Site", back_populates="user", cascade="all, delete-orphan")
@@ -65,7 +71,7 @@ class Device(Base):
     device_id = Column(String(64), unique=True, index=True, nullable=False)
     name = Column(String, nullable=False, default="Raspberry 4")
     hashed_pairing_code = Column(String, nullable=False)
-    stream_url = Column(String, nullable=False, default="http://172.20.10.2:8080/")
+    stream_url = Column(String, nullable=False, default="https://safely-virgin-mistress-staying.trycloudflare.com/stream.mjpg")
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     is_paired = Column(Boolean, default=False, nullable=False)
     paired_at = Column(DateTime, nullable=True)

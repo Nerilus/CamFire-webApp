@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-CamFire IoT Agent - Script de Provisioning et de Supervision Matérielle pour Raspberry Pi 4
-Ce script s'exécute sur le Raspberry Pi pour extraire son identifiant matériel unique,
-générer ou afficher le code secret d'appairage, et tester la connectivité au serveur CamFire.
+CamFire IoT Agent - Script de Provisioning, Télémétrie et Supervision Matérielle pour Raspberry Pi 4
+Ce script s'exécute sur le Raspberry Pi pour :
+1. Détecter l'identifiant matériel unique du Raspberry Pi
+2. Détecter l'URL du flux vidéo (Cloudflare Tunnel ou IP locale)
+3. Synchroniser la configuration avec le serveur CamFire
+4. Émettre un Heartbeat cryptographique toutes les 15 secondes (Dead Man's Switch)
 """
 
 import os
 import sys
+import re
 import hashlib
 import hmac
 import secrets
@@ -14,8 +18,15 @@ import socket
 import json
 import time
 import threading
+import argparse
 import urllib.request
 import urllib.error
+import ssl
+
+ssl_context = ssl._create_unverified_context()
+
+DEFAULT_SERVER_URL = "https://51.15.143.236.sslip.io"
+DEFAULT_PROVISION_KEY = "cf-factory-sec-2026-pi4-prod-key"
 
 def get_cpu_temperature() -> float:
     """Lit la température matérielle du processeur BCM2711 sur Raspberry Pi."""
@@ -24,44 +35,6 @@ def get_cpu_temperature() -> float:
             return round(float(f.read().strip()) / 1000.0, 1)
     except Exception:
         return 43.5
-
-def start_heartbeat_worker(hw_id: str, server_url: str, provision_key: str):
-    """
-    Heartbeat d'inactivité (Dead Man's Switch) avec signature HMAC-SHA256 anti-rejeu.
-    Émet toutes les 15 secondes vers le serveur pour prouver que le Raspberry Pi est actif et non saboté.
-    """
-    def _loop():
-        time.sleep(2)
-        while True:
-            try:
-                now = time.time()
-                nonce = secrets.token_hex(8)
-                cpu_temp = get_cpu_temperature()
-                tamper_detected = False
-
-                # Signature HMAC-SHA256 du message
-                payload = f"{hw_id}:{now}:{nonce}:{tamper_detected}".encode("utf-8")
-                sig = hmac.new(provision_key.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-
-                req = urllib.request.Request(
-                    f"{server_url}/devices/{hw_id}/heartbeat",
-                    data=json.dumps({
-                        "timestamp": now,
-                        "nonce": nonce,
-                        "cpu_temp": cpu_temp,
-                        "tamper_detected": tamper_detected,
-                        "signature": sig
-                    }).encode("utf-8"),
-                    headers={"Content-Type": "application/json"}
-                )
-                with urllib.request.urlopen(req, timeout=4) as resp:
-                    pass
-            except Exception:
-                pass
-            time.sleep(15)
-
-    t = threading.Thread(target=_loop, daemon=True, name="Pi_Heartbeat_Worker")
-    t.start()
 
 def get_hardware_serial() -> str:
     """Extrait le numéro de série matériel unique du processeur BCM2711 / Raspberry Pi."""
@@ -75,7 +48,6 @@ def get_hardware_serial() -> str:
     except Exception:
         pass
     
-    # Fallback si testé sur macOS ou machine de dev (utilise l'adresse MAC)
     try:
         import uuid
         mac = ':'.join(['{:02x}'.format((uuid.getnode() >> ele) & 0xff) for ele in range(0, 8*6, 8)][::-1])
@@ -83,7 +55,6 @@ def get_hardware_serial() -> str:
         return f"RPI4-CF-{mac_hash}"
     except Exception:
         return "RPI4-CF-DEMO"
-
 
 def get_local_ip() -> str:
     """Détecte l'adresse IP locale du Raspberry Pi sur le réseau."""
@@ -96,31 +67,120 @@ def get_local_ip() -> str:
     except Exception:
         return "127.0.0.1"
 
+def detect_stream_url(manual_url: str = None) -> str:
+    """Détecte l'URL de streaming externe (Cloudflare Tunnel) ou locale."""
+    if manual_url and manual_url.strip():
+        u = manual_url.strip()
+        if not u.endswith(".mjpg") and not u.endswith("/"):
+            u += "/stream.mjpg"
+        return u
+
+    env_url = os.getenv("TUNNEL_URL") or os.getenv("STREAM_URL")
+    if env_url:
+        u = env_url.strip()
+        if not u.endswith(".mjpg") and not u.endswith("/"):
+            u += "/stream.mjpg"
+        return u
+
+    # Analyse des logs de cloudflared
+    for log_path in ["/tmp/cloudflared.log", "/var/log/cloudflared.log", "cloudflared.log"]:
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, "r", errors="ignore") as f:
+                    content = f.read()
+                    matches = re.findall(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", content)
+                    if matches:
+                        return f"{matches[-1]}/stream.mjpg"
+            except Exception:
+                pass
+
+    # Fichier de configuration local
+    if os.path.exists("camfire_device.json"):
+        try:
+            with open("camfire_device.json", "r") as f:
+                data = json.load(f)
+                saved_url = data.get("stream_url")
+                if saved_url and ("trycloudflare.com" in saved_url or "sslip.io" in saved_url):
+                    return saved_url
+        except Exception:
+            pass
+
+    ip = get_local_ip()
+    return f"http://{ip}:8080/stream.mjpg"
+
 def generate_pairing_code() -> str:
-    """Génère un code d'appairage sécurisé à 6 chiffres/caractères."""
+    """Génère un code d'appairage sécurisé à 6 caractères alphanumériques."""
     chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return f"CF-{''.join(secrets.choice(chars) for _ in range(6))}"
 
 def print_banner():
-    print("=" * 60)
-    print("    CAMFIRE - AGENT MATÉRIEL RASPBERRY PI 4")
-    print("    Système de Télésurveillance Incendie Sécurisé")
-    print("=" * 60)
+    print("=" * 65)
+    print("    CAMFIRE - AGENT MATÉRIEL & TÉLÉMÉTRIE RASPBERRY PI 4")
+    print("    Surveillance Incendie & Sécurité Anti-Sabotage Active")
+    print("=" * 65)
+
+def send_heartbeat(hw_id: str, server_url: str, provision_key: str, stream_url: str) -> bool:
+    """Envoie un battement de coeur unitaire sécurisé."""
+    now = time.time()
+    nonce = secrets.token_hex(8)
+    cpu_temp = get_cpu_temperature()
+    tamper_detected = False
+
+    payload = f"{hw_id}:{now}:{nonce}:{tamper_detected}".encode("utf-8")
+    sig = hmac.new(provision_key.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+    data = {
+        "timestamp": now,
+        "nonce": nonce,
+        "cpu_temp": cpu_temp,
+        "tamper_detected": tamper_detected,
+        "signature": sig,
+        "stream_url": stream_url
+    }
+
+    req = urllib.request.Request(
+        f"{server_url}/devices/{hw_id}/heartbeat",
+        data=json.dumps(data).encode("utf-8"),
+        headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5, context=ssl_context) as resp:
+            return resp.status == 200
+    except Exception as e:
+        return False
+
+def heartbeat_worker_loop(hw_id: str, server_url: str, provision_key: str, get_stream_fn):
+    """Boucle perpétuelle d'émission du Dead Man's Switch (toutes les 15s)."""
+    while True:
+        stream_u = get_stream_fn()
+        temp = get_cpu_temperature()
+        ok = send_heartbeat(hw_id, server_url, provision_key, stream_u)
+        status_msg = "\033[1;32mEN LIGNE (200 OK)\033[0m" if ok else "\033[1;31mÉCHEC TRANSMISSION\033[0m"
+        now_str = time.strftime("%H:%M:%S")
+        print(f"[{now_str}] Heartbeat -> {server_url} | {status_msg} | CPU: {temp}°C | Flux: {stream_u}")
+        time.sleep(15)
 
 def main():
+    parser = argparse.ArgumentParser(description="Agent CamFire pour Raspberry Pi 4")
+    parser.add_argument("--server", default=os.getenv("CAMFIRE_SERVER_URL", DEFAULT_SERVER_URL), help="URL du serveur CamFire")
+    parser.add_argument("--tunnel-url", default=None, help="URL publique du tunnel Cloudflare (ex: https://xxx.trycloudflare.com)")
+    parser.add_argument("--key", default=os.getenv("DEVICE_PROVISION_KEY", DEFAULT_PROVISION_KEY), help="Clé d'usine de provisioning")
+    args = parser.parse_args()
+
     print_banner()
-    
+
     hw_id = get_hardware_serial()
     ip = get_local_ip()
-    stream_url = f"http://{ip}:8080/"
+    stream_url = detect_stream_url(args.tunnel_url)
 
-    print(f"\n[1] Informations Matérielles Détectées :")
-    print(f"    • Modèle           : Raspberry Pi 4 Model B")
-    print(f"    • Identifiant Matériel (Device ID) : \033[1;32m{hw_id}\033[0m")
-    print(f"    • Adresse IP Locale                : {ip}")
-    print(f"    • Flux Vidéo Local                 : {stream_url}")
+    print(f"\n[1] Diagnostic Matériel & Réseau :")
+    print(f"    • ID Matériel Unique (Device ID) : \033[1;32m{hw_id}\033[0m")
+    print(f"    • IP Locale Raspberry Pi         : {ip}")
+    print(f"    • Température Processeur BCM2711 : {get_cpu_temperature()}°C")
+    print(f"    • Serveur Cible CamFire          : \033[1;34m{args.server}\033[0m")
+    print(f"    • Flux Vidéo Détecté             : \033[1;36m{stream_url}\033[0m")
 
-    # Vérification fichier de configuration local
+    # Lecture ou création du code d'appairage local
     config_file = "camfire_device.json"
     if os.path.exists(config_file):
         try:
@@ -131,54 +191,52 @@ def main():
             pairing_code = generate_pairing_code()
     else:
         pairing_code = generate_pairing_code()
-        with open(config_file, "w") as f:
-            json.dump({
-                "device_id": hw_id,
-                "pairing_code": pairing_code,
-                "stream_url": stream_url
-            }, f, indent=2)
-        try:
-            os.chmod(config_file, 0o600)
-        except Exception:
-            pass
 
-    print(f"\n[2] Clé d'Appairage Cryptographique (TTL 24h) :")
-    print(f"    • Code Secret d'Appairage : \033[1;33m{pairing_code}\033[0m")
+    # Mise à jour du fichier local
+    with open(config_file, "w") as f:
+        json.dump({
+            "device_id": hw_id,
+            "pairing_code": pairing_code,
+            "stream_url": stream_url
+        }, f, indent=2)
+    try:
+        os.chmod(config_file, 0o600)
+    except Exception:
+        pass
 
-    # Tentative d'enregistrement automatique authentifiée auprès du serveur CamFire
-    server_url = os.getenv("CAMFIRE_SERVER_URL", "http://172.20.10.1:8000")
-    provision_key = os.getenv("DEVICE_PROVISION_KEY", "cf-factory-sec-2026-pi4-prod-key")
+    print(f"\n[2] Sécurité & Appairage :")
+    print(f"    • Code Secret d'Appairage        : \033[1;33m{pairing_code}\033[0m")
+
+    # Provisioning auprès du serveur CamFire
     try:
         req = urllib.request.Request(
-            f"{server_url}/devices/provision",
+            f"{args.server}/devices/provision",
             data=json.dumps({
                 "device_id": hw_id,
                 "pairing_code": pairing_code,
                 "stream_url": stream_url,
-                "name": "Raspberry 4"
+                "name": "Caméra Raspberry Pi 4"
             }).encode('utf-8'),
             headers={
                 "Content-Type": "application/json",
-                "X-Device-Provision-Key": provision_key
+                "X-Device-Provision-Key": args.key
             }
         )
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            print(f"    • Serveur CamFire          : \033[1;32mConnecté & Provisionné de manière sécurisée\033[0m")
+        with urllib.request.urlopen(req, timeout=6, context=ssl_context) as resp:
+            print(f"    • Synchronisation Serveur        : \033[1;32mSuccès (Enregistré & Stream mis à jour)\033[0m")
     except Exception as e:
-        print(f"    • Serveur CamFire          : Non joignable à {server_url} ({e})")
+        print(f"    • Synchronisation Serveur        : Attention ({e})")
 
-    # Démarrage de la télémétrie active chiffrée (Dead Man's Switch)
-    start_heartbeat_worker(hw_id, server_url, provision_key)
-    print("    • Surveillance Active      : \033[1;32mHeartbeat chiffré (15s) actif (Dead Man's Switch)\033[0m")
+    # Démarrage de la boucle active Dead Man's Switch
+    print(f"\n[3] Surveillance Continue Active (Dead Man's Switch) :")
+    print("    • Émission de battements sécurisés toutes les 15 secondes...")
+    print("    • Maintenez ce terminal ouvert ou lancez-le en service systemd.")
+    print("    • Appuyez sur Ctrl+C pour interrompre l'agent.\n")
 
-
-    print("\n" + "-" * 60)
-    print("ℹ️  INSTRUCTIONS D'ASSOCIATION À VOTRE COMPTE :")
-    print("   1. Rendez-vous sur l'application Web CamFire.")
-    print("   2. Dans l'interface (ou Inscription -> Lier un appareil) :")
-    print(f"      - Device ID   : {hw_id}")
-    print(f"      - Code Secret : {pairing_code}")
-    print("-" * 60 + "\n")
+    try:
+        heartbeat_worker_loop(hw_id, args.server, args.key, lambda: detect_stream_url(args.tunnel_url))
+    except KeyboardInterrupt:
+        print("\n[Arrêt] Agent CamFire arrêté par l'utilisateur.")
 
 if __name__ == "__main__":
     main()

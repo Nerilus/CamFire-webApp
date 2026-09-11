@@ -9,7 +9,7 @@ import { deviceService, type Device } from '../services/deviceService';
 import { siteService, type Site, type SiteCreateInput } from '../services/siteService';
 import './Carte.css';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_URL } from '../config/api';
 
 // Custom Marker Icons for Sites
 const createSiteIcon = (hasDevice: boolean, status: 'safe' | 'warn' | 'fire', isSelected: boolean) => {

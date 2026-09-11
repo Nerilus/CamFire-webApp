@@ -13,6 +13,7 @@ import jwt
 
 from db.database import get_db
 from db.models import User, Device, UserDevice
+from services.email import send_device_paired_email, send_device_unpaired_email
 from schemas.device_schema import (
     DevicePairRequest,
     DeviceResponse,
@@ -20,11 +21,12 @@ from schemas.device_schema import (
     DeviceProvisionRequest,
     DeviceMemberResponse,
     DeviceHeartbeatRequest,
+    DeviceUpdateRequest,
     StreamTicketResponse,
     RefreshCodeResponse
 )
 from core.security import verify_password, get_password_hash
-from core.config import SECRET_KEY, ALGORITHM, DEVICE_PROVISION_KEY
+from core.config import SECRET_KEY, ALGORITHM, DEVICE_PROVISION_KEY, CAMERA_URL
 from routers.auth import get_current_user
 from services.predict import generate_video_stream
 
@@ -196,24 +198,23 @@ def provision_device(
             device_id=req.device_id,
             name=req.name or "Raspberry 4",
             hashed_pairing_code=get_password_hash(req.pairing_code),
-            stream_url=req.stream_url or "http://172.20.10.2:8080/",
+            stream_url=req.stream_url or CAMERA_URL,
             code_expires_at=expires_at,
             is_paired=False
         )
         db.add(dev)
         db.commit()
         return {"status": "created", "device_id": req.device_id, "expires_at": expires_at.isoformat()}
-    elif not dev.is_paired:
-        dev.hashed_pairing_code = get_password_hash(req.pairing_code)
-        dev.code_expires_at = expires_at
+    else:
         if req.stream_url:
             dev.stream_url = req.stream_url
         if req.name:
             dev.name = req.name
+        if not dev.is_paired:
+            dev.hashed_pairing_code = get_password_hash(req.pairing_code)
+            dev.code_expires_at = expires_at
         db.commit()
-        return {"status": "updated", "device_id": req.device_id, "expires_at": expires_at.isoformat()}
-    else:
-        return {"status": "already_paired", "device_id": req.device_id}
+        return {"status": "updated", "device_id": req.device_id, "stream_url": dev.stream_url}
 
 # ---------------------------------------------------------------------------
 # 6. Endpoints Utilisateurs & Appairage Sécurisé
@@ -307,6 +308,14 @@ def device_heartbeat(
     dev.last_seen_at = now_dt
     if req.cpu_temp is not None:
         dev.cpu_temp = req.cpu_temp
+    if req.stream_url and req.stream_url.strip():
+        new_stream = req.stream_url.strip()
+        if new_stream != dev.stream_url:
+            try:
+                validate_stream_url(new_stream)
+                dev.stream_url = new_stream
+            except Exception:
+                pass
 
     # 5. Gestion du sabotage physique (Tamper Switch)
     if req.tamper_detected:
@@ -352,11 +361,30 @@ def pair_device(
 
     device = db.query(Device).filter(Device.device_id == target_device_id).first()
     if not device:
-        record_pair_failure(client_id, target_device_id)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Aucun appareil trouvé avec l'identifiant matériel '{pair_in.device_id}'."
-        )
+        # Enregistrement automatique au premier appairage si l'appareil a un format valide
+        if len(pair_in.pairing_code.strip()) >= 4:
+            device = Device(
+                device_id=target_device_id,
+                name=pair_in.name.strip() if pair_in.name else "Raspberry 4",
+                hashed_pairing_code=get_password_hash(pair_in.pairing_code.strip()),
+                stream_url=CAMERA_URL,
+                code_expires_at=datetime.utcnow() + timedelta(hours=24),
+                is_paired=False
+            )
+            db.add(device)
+            db.commit()
+            db.refresh(device)
+        else:
+            record_pair_failure(client_id, target_device_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Aucun appareil trouvé avec l'identifiant matériel '{pair_in.device_id}'."
+            )
+
+    # Si l'appareil avait une ancienne URL locale, la basculer vers CAMERA_URL
+    if device and ("172.20.10.2" in (device.stream_url or "") or "localhost" in (device.stream_url or "")):
+        device.stream_url = CAMERA_URL
+        db.commit()
 
     # 2. Vérification de l'expiration du code (TTL)
     if device.code_expires_at and datetime.utcnow() > device.code_expires_at:
@@ -404,6 +432,8 @@ def pair_device(
     device.is_paired = True
     db.commit()
 
+    send_device_paired_email(current_user.email, custom_name, device.device_id)
+
     return DeviceResponse(
         id=device.id,
         device_id=device.device_id,
@@ -419,6 +449,50 @@ def pair_device(
         cpu_temp=device.cpu_temp
     )
 
+
+
+@router.patch("/{device_id}", response_model=DeviceResponse)
+def update_device(
+    device_id: str,
+    req: DeviceUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Permet au propriétaire de renommer l'appareil ou de mettre à jour son URL de flux vidéo."""
+    dev = db.query(Device).filter(Device.device_id == device_id.strip()).first()
+    if not dev:
+        raise HTTPException(status_code=404, detail="Appareil introuvable.")
+    ud = db.query(UserDevice).filter(
+        UserDevice.user_id == current_user.id,
+        UserDevice.device_id == dev.id
+    ).first()
+    if not ud or ud.role != "owner":
+        raise HTTPException(status_code=403, detail="Seul le propriétaire de l'appareil peut modifier ces paramètres.")
+
+    if req.name and req.name.strip():
+        ud.custom_name = req.name.strip()
+        dev.name = req.name.strip()
+    if req.stream_url and req.stream_url.strip():
+        validate_stream_url(req.stream_url.strip())
+        dev.stream_url = req.stream_url.strip()
+
+    db.commit()
+    db.refresh(dev)
+
+    return DeviceResponse(
+        id=dev.id,
+        device_id=dev.device_id,
+        name=ud.custom_name or dev.name,
+        role=ud.role or "owner",
+        is_paired=True,
+        paired_at=ud.paired_at,
+        last_seen_at=dev.last_seen_at,
+        lat=dev.lat,
+        lng=dev.lng,
+        status="online" if dev.last_seen_at and (datetime.utcnow() - dev.last_seen_at).total_seconds() < 45 else "offline",
+        tamper_status=dev.tamper_status or "normal",
+        cpu_temp=dev.cpu_temp
+    )
 
 
 @router.post("/unpair/{device_id}")
@@ -461,6 +535,7 @@ def unpair_device(
         remaining_uds[0].role = "owner"
 
     db.commit()
+    send_device_unpaired_email(current_user.email, ud.custom_name or device.name, device.device_id)
     return {"message": f"L'appareil '{device_id}' a été dissocié avec succès de votre compte."}
 
 # ---------------------------------------------------------------------------

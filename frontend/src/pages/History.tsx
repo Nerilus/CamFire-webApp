@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_URL } from '../config/api';
 import { DownloadIcon, ShareIcon, SmokeIcon, CheckCircleIcon, WarningIcon, EyeIcon } from '../components/icons';
 import { FireAlertModal, type AlertRecord } from '../components/FireAlertModal';
 import './History.css';
@@ -26,8 +27,7 @@ export const History: React.FC = () => {
 
   const fetchHistory = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const res = await fetch(`${apiUrl}/alerts/`);
+      const res = await fetch(`${API_URL}/alerts/`);
       if (res.ok) {
         const data = await res.json();
         const formattedData: AlertRecord[] = data.map((alert: any) => {
@@ -39,7 +39,7 @@ export const History: React.FC = () => {
 
           let fullImageUrl = alert.image_url;
           if (fullImageUrl && !fullImageUrl.startsWith('http') && !fullImageUrl.startsWith('data:')) {
-            fullImageUrl = `${apiUrl}${fullImageUrl.startsWith('/') ? '' : '/'}${fullImageUrl}`;
+            fullImageUrl = `${API_URL}${fullImageUrl.startsWith('/') ? '' : '/'}${fullImageUrl}`;
           }
 
           return {

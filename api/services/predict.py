@@ -12,6 +12,7 @@ import torch
 from PIL import Image
 from ultralytics import YOLO
 from ultralytics.nn.tasks import DetectionModel
+from services.discord import send_discord_alert_sync
 
 # Contournement de sécurité PyTorch 2.6+ pour charger le modèle YOLO local
 try:
@@ -229,6 +230,10 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                 db.add(alert)
                 db.commit()
                 print(f"[CAPTURE] Snapshot enregistrée: {filename} -> Type: {detection_type.upper()} ({confidence}%) à {location}")
+                
+                # Notification Discord
+                alert_type_mapped = "fire" if status == "fire" else ("warn" if status == "warn" else "unknown")
+                send_discord_alert_sync(alert_type_mapped, location, confidence, image_url)
             except Exception as dbe:
                 print(f"Erreur DB Capture: {dbe}")
             finally:
@@ -429,7 +434,7 @@ def _ai_worker_loop():
                     print("[SURVEILLANCE] Surveillance active en arrière-plan")
                     last_ras_log = now
 
-            time.sleep(0.03)
+            time.sleep(0.08)
         except Exception as e:
             print(f"Erreur Worker IA: {e}")
             time.sleep(0.1)
@@ -471,6 +476,11 @@ def generate_video_stream(camera_url: str):
             if not cap.isOpened():
                 raise Exception("Flux indisponible (connexion impossible)")
 
+            try:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
+
             print("Connexion établie. Diffusion fluide du flux vidéo...")
             while True:
                 ret, frame = cap.read()
@@ -493,7 +503,7 @@ def generate_video_stream(camera_url: str):
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
                 # Encodage JPEG rapide et envoi immédiat (fluide à 25-30 FPS réels)
-                ret_enc, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                ret_enc, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 if ret_enc:
                     frame_bytes = buffer.tobytes()
                     yield (b'--frame\r\n'

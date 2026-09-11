@@ -10,7 +10,7 @@ class DevicePairRequest(BaseModel):
 class DeviceProvisionRequest(BaseModel):
     device_id: str
     pairing_code: str
-    stream_url: Optional[str] = "http://172.20.10.2:8080/"
+    stream_url: Optional[str] = "https://safely-virgin-mistress-staying.trycloudflare.com/stream.mjpg"
     name: Optional[str] = "Raspberry 4"
 
 class DeviceUnpairRequest(BaseModel):
@@ -22,6 +22,11 @@ class DeviceHeartbeatRequest(BaseModel):
     cpu_temp: Optional[float] = None
     tamper_detected: bool = False
     signature: str
+    stream_url: Optional[str] = None
+
+class DeviceUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    stream_url: Optional[str] = None
 
 class DeviceResponse(BaseModel):
     id: int
