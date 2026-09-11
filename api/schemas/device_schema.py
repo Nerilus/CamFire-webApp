@@ -22,6 +22,11 @@ class DeviceHeartbeatRequest(BaseModel):
     cpu_temp: Optional[float] = None
     tamper_detected: bool = False
     signature: str
+    stream_url: Optional[str] = None
+
+class DeviceUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    stream_url: Optional[str] = None
 
 class DeviceResponse(BaseModel):
     id: int
