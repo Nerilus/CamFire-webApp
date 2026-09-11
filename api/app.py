@@ -11,26 +11,35 @@ import time
 from datetime import datetime, timedelta
 from sqlalchemy import text
 
-# Génère les tables si elles n'existent pas encore
-Base.metadata.create_all(bind=engine)
+# Initialisation sécurisée des tables et migrations avec verrou Postgres (évite les conflits multi-workers)
+def _init_db_schema():
+    try:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("SELECT pg_advisory_lock(748392);"))
+            except Exception:
+                pass
+            Base.metadata.create_all(bind=conn)
+            conn.execute(text("ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS role VARCHAR DEFAULT 'owner';"))
+            conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS code_expires_at TIMESTAMP;"))
+            conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS tamper_status VARCHAR DEFAULT 'normal';"))
+            conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS cpu_temp FLOAT;"))
+            conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_tamper_alert_at TIMESTAMP;"))
+            # Colonnes 2FA pour la table users
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code_hash VARCHAR;"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_attempts INTEGER DEFAULT 0;"))
+            try:
+                conn.execute(text("SELECT pg_advisory_unlock(748392);"))
+            except Exception:
+                pass
+            conn.commit()
+        print("[MIGRATION] Tables et colonnes 2FA vérifiées avec succès.")
+    except Exception as e:
+        print(f"[MIGRATION NOTICE] {e}")
 
-# Migration automatique pour les colonnes de sécurité & Dead Man's Switch
-try:
-    with engine.connect() as conn:
-        conn.execute(text("ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS role VARCHAR DEFAULT 'owner';"))
-        conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS code_expires_at TIMESTAMP;"))
-        conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS tamper_status VARCHAR DEFAULT 'normal';"))
-        conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS cpu_temp FLOAT;"))
-        conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_tamper_alert_at TIMESTAMP;"))
-        # Colonnes 2FA pour la table users
-        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT TRUE;"))
-        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code_hash VARCHAR;"))
-        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;"))
-        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_attempts INTEGER DEFAULT 0;"))
-        conn.commit()
-    print("[MIGRATION] Tables et colonnes 2FA vérifiées avec succès.")
-except Exception as e:
-    print(f"[MIGRATION WARNING] {e}")
+_init_db_schema()
 
 # Daemon Dead Man's Switch : Surveillance active des coupures brutales (Anti-Pyromane / Sabotage)
 def _dead_man_switch_loop():
