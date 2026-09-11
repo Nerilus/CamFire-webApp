@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { deviceService, type Device } from '../services/deviceService';
-import { SettingsIcon, RadioIcon } from '../components/icons';
+import { SettingsIcon, RadioIcon, ShieldCheckIcon, ShieldAlertIcon } from '../components/icons';
 import './Profile.css';
+
 
 export const Profile: React.FC = () => {
   const navigate = useNavigate();
@@ -12,6 +13,18 @@ export const Profile: React.FC = () => {
   const [email, setEmail] = useState('');
   const [profileMsg, setProfileMsg] = useState({ type: '', text: '' });
   const [loadingProfile, setLoadingProfile] = useState(false);
+
+  // Sécurité & 2FA
+  const [is2FAEnabled, setIs2FAEnabled] = useState<boolean>(true);
+  const [loading2FA, setLoading2FA] = useState<boolean>(false);
+  const [twoFAMsg, setTwoFAMsg] = useState({ type: '', text: '' });
+
+  // Modal désactivation sécurisée 2FA
+  const [showDisable2FAModal, setShowDisable2FAModal] = useState<boolean>(false);
+  const [disable2FACode, setDisable2FACode] = useState<string>('');
+  const [disable2FAEmail, setDisable2FAEmail] = useState<string>('');
+  const [isDisabling2FA, setIsDisabling2FA] = useState<boolean>(false);
+  const [disable2FAError, setDisable2FAError] = useState<string | null>(null);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -40,8 +53,69 @@ export const Profile: React.FC = () => {
       setFirstname(user.firstname || '');
       setLastname(user.lastname || '');
       setEmail(user.email || '');
+      if (user.is_2fa_enabled !== undefined) {
+        setIs2FAEnabled(user.is_2fa_enabled);
+      }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleToggle2FA = async () => {
+    setTwoFAMsg({ type: '', text: '' });
+    if (is2FAEnabled) {
+      // Pour désactiver : demande préalable d'un code OTP par e-mail
+      setLoading2FA(true);
+      setDisable2FAError(null);
+      setDisable2FACode('');
+      try {
+        const res = await authService.requestDisable2FA();
+        setDisable2FAEmail(res.emailMasked || email);
+        setShowDisable2FAModal(true);
+      } catch (err: any) {
+        setTwoFAMsg({ type: 'error', text: err.message || "Impossible d'envoyer le code de vérification." });
+      } finally {
+        setLoading2FA(false);
+      }
+    } else {
+      // Pour activer : activation directe sécurisée
+      setLoading2FA(true);
+      try {
+        const updated = await authService.enable2FA();
+        setIs2FAEnabled(updated);
+        setTwoFAMsg({ type: 'success', text: "Double authentification activée avec succès !" });
+      } catch (err: any) {
+        setTwoFAMsg({ type: 'error', text: err.message || "Erreur lors de l'activation." });
+      } finally {
+        setLoading2FA(false);
+      }
+    }
+  };
+
+  const handleConfirmDisable2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!disable2FACode.trim()) return;
+    setIsDisabling2FA(true);
+    setDisable2FAError(null);
+    try {
+      const updated = await authService.confirmDisable2FA(disable2FACode);
+      setIs2FAEnabled(updated);
+      setShowDisable2FAModal(false);
+      setTwoFAMsg({ type: 'success', text: "Double authentification désactivée avec succès." });
+    } catch (err: any) {
+      setDisable2FAError(err.message || "Code incorrect ou expiré.");
+    } finally {
+      setIsDisabling2FA(false);
+    }
+  };
+
+  const handleResendDisableCode = async () => {
+    setDisable2FAError(null);
+    try {
+      const res = await authService.requestDisable2FA();
+      alert(res.message || "Un nouveau code a été envoyé.");
+    } catch (err: any) {
+      setDisable2FAError(err.message || "Impossible de renvoyer le code.");
     }
   };
 
@@ -237,6 +311,114 @@ export const Profile: React.FC = () => {
         </div>
       )}
 
+      {/* Modal Désactivation 2FA sécurisée avec code e-mail */}
+      {showDisable2FAModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.85)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--surface)', border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '16px', padding: '26px', maxWidth: '420px', width: '100%',
+            boxShadow: '0 16px 40px rgba(0, 0, 0, 0.75)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <div style={{
+                width: '40px', height: '40px', borderRadius: '50%',
+                background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444'
+              }}>
+                <ShieldAlertIcon size={22} />
+              </div>
+              <h3 style={{ color: '#fff', margin: 0, fontSize: '18px' }}>Désactiver la Double Authentification</h3>
+            </div>
+            
+            <p style={{ color: 'var(--text-dim)', fontSize: '13px', lineHeight: '1.5', marginTop: '6px' }}>
+              Pour garantir la sécurité de votre compte, saisissez le code à 6 chiffres envoyé à votre adresse e-mail :
+            </p>
+            <div style={{
+              background: 'rgba(0, 210, 255, 0.08)',
+              border: '1px solid rgba(0, 210, 255, 0.25)',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              color: '#38bdf8',
+              fontSize: '13px',
+              fontWeight: 600,
+              fontFamily: 'monospace',
+              textAlign: 'center',
+              marginBottom: '14px'
+            }}>
+              {disable2FAEmail}
+            </div>
+
+            <form onSubmit={handleConfirmDisable2FA} className="profile-form">
+              <div className="profile-form-group">
+                <label>Code de confirmation (6 chiffres)</label>
+                <input 
+                  type="text" 
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={disable2FACode} 
+                  onChange={(e) => setDisable2FACode(e.target.value.replace(/\D/g, ''))} 
+                  placeholder="••••••" 
+                  required 
+                  autoFocus
+                  style={{
+                    letterSpacing: '8px',
+                    fontSize: '22px',
+                    textAlign: 'center',
+                    fontWeight: 700,
+                    fontFamily: 'Consolas, Monaco, monospace',
+                    background: '#12121a',
+                    border: '1px solid #38384f',
+                    color: '#ff5722'
+                  }}
+                />
+              </div>
+
+              {disable2FAError && (
+                <div className="profile-msg error" style={{ fontSize: '12px', padding: '8px', marginTop: '4px' }}>
+                  {disable2FAError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2px' }}>
+                <button
+                  type="button"
+                  onClick={handleResendDisableCode}
+                  style={{
+                    background: 'none', border: 'none', color: '#00d2ff', fontSize: '12px',
+                    cursor: 'pointer', padding: '4px 0', textDecoration: 'underline'
+                  }}
+                >
+                  Renvoyer un code
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-dark" 
+                  style={{ flex: 1 }} 
+                  onClick={() => setShowDisable2FAModal(false)}
+                >
+                  Annuler
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn" 
+                  style={{ flex: 1, background: '#ef4444' }} 
+                  disabled={isDisabling2FA || disable2FACode.length !== 6}
+                >
+                  {isDisabling2FA ? 'Vérification...' : 'Confirmer la désactivation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Section Informations Personnelles */}
       <section className="profile-section">
         <h2 className="profile-section-title">INFORMATIONS PERSONNELLES</h2>
@@ -272,6 +454,70 @@ export const Profile: React.FC = () => {
             {loadingProfile ? 'Enregistrement...' : 'Enregistrer les modifications'}
           </button>
         </form>
+      </section>
+
+      {/* Section Double Authentification (2FA) */}
+      <section className="profile-section">
+        <h2 className="profile-section-title">DOUBLE AUTHENTIFICATION (2FA PAR EMAIL)</h2>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '16px',
+          background: 'var(--surface-2)',
+          borderRadius: '12px',
+          border: '1px solid var(--border)',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{
+              width: '42px',
+              height: '42px',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: is2FAEnabled ? 'rgba(0, 210, 255, 0.12)' : 'rgba(239, 68, 68, 0.1)',
+              border: `1px solid ${is2FAEnabled ? '#00d2ff' : '#ef4444'}`,
+              color: is2FAEnabled ? '#00d2ff' : '#ef4444'
+            }}>
+              <ShieldCheckIcon size={24} />
+            </div>
+            <div>
+              <div style={{ color: '#fff', fontWeight: 600, fontSize: '15px' }}>
+                {is2FAEnabled ? 'Protection 2FA Active' : 'Protection 2FA Désactivée'}
+              </div>
+              <div style={{ color: 'var(--text-dim)', fontSize: '12px', marginTop: '2px' }}>
+                {is2FAEnabled 
+                  ? 'Un code à 6 chiffres vous est envoyé par e-mail à chaque tentative de connexion.'
+                  : 'Votre compte est protégé uniquement par votre mot de passe.'}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            style={{
+              background: is2FAEnabled ? 'rgba(239, 68, 68, 0.2)' : 'linear-gradient(135deg, #00b4db 0%, #0083b0 100%)',
+              color: is2FAEnabled ? '#f87171' : '#fff',
+              border: is2FAEnabled ? '1px solid rgba(239, 68, 68, 0.4)' : 'none',
+              padding: '10px 16px',
+              fontSize: '13px',
+              fontWeight: 600
+            }}
+            disabled={loading2FA}
+            onClick={handleToggle2FA}
+          >
+            {loading2FA ? 'Modification...' : is2FAEnabled ? 'Désactiver' : 'Activer'}
+          </button>
+        </div>
+
+        {twoFAMsg.text && (
+          <div className={`profile-msg ${twoFAMsg.type}`} style={{ marginTop: '12px' }}>
+            {twoFAMsg.text}
+          </div>
+        )}
       </section>
 
       {/* Section Sécurité Mot de Passe */}
