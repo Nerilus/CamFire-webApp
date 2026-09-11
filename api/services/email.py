@@ -1,8 +1,9 @@
+import logging
 import smtplib
 import threading
+from datetime import datetime
 from email.message import EmailMessage
 from html import escape
-import logging
 
 from core.config import (
     SMTP_FROM,
@@ -23,7 +24,7 @@ def _send_email_sync(subject: str, recipient: str, text_body: str, html_body: st
 
     message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = SMTP_FROM
+    message["From"] = SMTP_FROM or "CamFire Security <no-reply@camfire.local>"
     message["To"] = recipient
     message.set_content(text_body)
     message.add_alternative(html_body, subtype="html")
@@ -51,6 +52,7 @@ def send_email_async(subject: str, recipient: str, text_body: str, html_body: st
 
 
 def _email_base_template(eyebrow: str, title: str, intro: str, content: str) -> str:
+    """Template e-mail HTML moderne en mode sombre assorti à la charte CamFire."""
     return f"""<!doctype html>
 <html lang="fr">
 <head>
@@ -90,6 +92,15 @@ def _email_base_template(eyebrow: str, title: str, intro: str, content: str) -> 
     </div>
 </body>
 </html>"""
+
+
+def _detail_card(rows: list[tuple[str, str]]) -> str:
+    items = "".join(
+        f'<tr><td style="padding:12px 16px;color:#71717a;border-bottom:1px solid #1c1c28;font-size:13px;">{escape(label)}</td>'
+        f'<td style="padding:12px 16px;text-align:right;color:#ffffff;font-size:13px;font-weight:600;border-bottom:1px solid #1c1c28;">{escape(value)}</td></tr>'
+        for label, value in rows
+    )
+    return f'<div style="margin:20px 0;background:#0d0d12;border:1px solid #232332;border-radius:10px;overflow:hidden;"><table role="presentation" width="100%" style="border-collapse:collapse;">{items}</table></div>'
 
 
 def send_otp_email(recipient: str, code: str, expire_minutes: int = 10, purpose: str = "login") -> None:
@@ -168,8 +179,6 @@ def send_login_notification_email(recipient: str, ip_address: str, user_agent: s
     Envoie un e-mail d'alerte de sécurité après une connexion réussie
     indiquant l'adresse IP, la date/heure et le navigateur utilisé.
     """
-    from datetime import datetime
-
     now_str = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
 
     # Log pour le développement et la visibilité
@@ -223,3 +232,65 @@ L'équipe Sécurité CamFire
 
     send_email_async(subject, recipient, text_body, html_body)
 
+
+def send_welcome_email(recipient: str) -> None:
+    """Envoie un e-mail de bienvenue lors de la création d'un compte."""
+    text = (
+        "Bonjour,\n\n"
+        "Votre inscription à CamFire est confirmée. Votre compte est maintenant actif.\n\n"
+        "Vous pourrez associer votre appareil CamFire depuis votre espace personnel.\n\n"
+        "L'équipe CamFire"
+    )
+    content = (
+        '<div style="margin-top:20px;padding:18px 20px;background:rgba(255,87,34,0.08);border-left:4px solid #ff5722;border-radius:8px;color:#cbd5e1;font-size:14px;line-height:1.6;">'
+        'CamFire vous accompagne dans la surveillance intelligente de vos sites et de vos équipements.<br><br>'
+        'Vous pourrez associer votre appareil Raspberry Pi depuis votre espace personnel.'
+        '</div>'
+    )
+    html = _email_base_template(
+        eyebrow="Inscription Confirmée",
+        title="Bienvenue chez CamFire",
+        intro="Votre inscription a bien été prise en compte. Votre compte est maintenant actif et votre espace personnel est prêt à être utilisé.",
+        content=content,
+    )
+    send_email_async("Bienvenue chez CamFire", recipient, text, html)
+
+
+def send_device_paired_email(recipient: str, device_name: str, device_id: str) -> None:
+    """Envoie un e-mail confirmant l'association d'un appareil."""
+    text = (
+        f"Bonjour,\n\n"
+        f"L'appareil {device_name} ({device_id}) est désormais associé à votre compte CamFire.\n\n"
+        "L'équipe CamFire"
+    )
+    content = (
+        _detail_card([("Nom de l'appareil", device_name), ("Identifiant matériel", device_id)])
+        + '<p style="margin:20px 0 0;color:#94a3b8;font-size:14px;line-height:1.6;">Vous pouvez désormais retrouver son flux vidéo en direct, ses alertes et son état depuis votre espace CamFire.</p>'
+    )
+    html = _email_base_template(
+        eyebrow="Équipement Connecté",
+        title="Votre appareil est prêt",
+        intro="L'association de votre équipement a bien été confirmée :",
+        content=content,
+    )
+    send_email_async("Confirmation d'association de votre appareil CamFire", recipient, text, html)
+
+
+def send_device_unpaired_email(recipient: str, device_name: str, device_id: str) -> None:
+    """Envoie un e-mail informant de la dissociation d'un appareil."""
+    text = (
+        f"Bonjour,\n\n"
+        f"L'appareil {device_name} ({device_id}) a été dissocié de votre compte CamFire.\n\n"
+        "L'équipe CamFire"
+    )
+    content = (
+        _detail_card([("Nom de l'appareil", device_name), ("Identifiant matériel", device_id)])
+        + '<div style="margin-top:20px;padding:14px 16px;background:rgba(239,68,68,0.08);border-left:3px solid #ef4444;border-radius:6px;color:#cbd5e1;font-size:13px;line-height:1.5;">Si vous n’êtes pas à l’origine de cette action, connectez-vous immédiatement à votre espace CamFire et contactez votre administrateur.</div>'
+    )
+    html = _email_base_template(
+        eyebrow="Modification du Compte",
+        title="Appareil dissocié",
+        intro="Nous vous confirmons que cet équipement n'est désormais plus rattaché à votre espace CamFire :",
+        content=content,
+    )
+    send_email_async("Confirmation de dissociation de votre appareil CamFire", recipient, text, html)
