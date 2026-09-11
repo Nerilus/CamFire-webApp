@@ -17,6 +17,9 @@ export const Auth: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [otpStep, setOtpStep] = useState<boolean>(false);
+  const [otpCode, setOtpCode] = useState<string>('');
+
 
   // Redirection si l'utilisateur arrive sur /auth déjà connecté (sauf s'il est en cours d'appairage à l'étape 2)
   useEffect(() => {
@@ -40,16 +43,15 @@ export const Auth: React.FC = () => {
     try {
       if (isLogin) {
         // Flux Connexion
-        const token = await authService.login(email, password);
-        login(token);
-        setSuccess("Connexion réussie ! Redirection...");
-        navigate('/home', { replace: true });
+        const result = await authService.login(email, password);
+        setSuccess(result.message);
+        setOtpStep(true);
+
       } else {
         // Flux Inscription : création du compte, connexion et affichage immédiat de l'étape d'appairage
         await authService.register(email, password);
-        const token = await authService.login(email, password);
-        login(token);
-        setSignupStep(2);
+        await authService.login(email, password);
+        setOtpStep(true);
       }
     } catch (err: any) {
       setError(err.message || 'Une erreur est survenue.');
@@ -57,6 +59,74 @@ export const Auth: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+        const token = await authService.verifyOtp(email, otpCode);
+        login(token);
+        if (!isLogin) {
+        setSignupStep(2);
+    } else {
+    navigate('/home', { replace: true });
+    }
+    } catch (err: any) {
+        setError(err.message || 'Code invalide ou expiré.');
+    } finally {
+        setLoading(false);
+    }
+  };
+
+    // Écran de vérification OTP (2FA)
+  if (otpStep) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <div style={styles.header}>
+            <div style={styles.logoContainer}>
+              <FlameIcon size={28} />
+            </div>
+            <h1 style={styles.title}>CamFire</h1>
+            <p style={styles.subtitle}>Vérification en deux étapes</p>
+          </div>
+          <p style={{ color: '#a1a1aa', fontSize: '14px', textAlign: 'center', marginBottom: '20px' }}>
+            Un code à 6 chiffres a été envoyé à <strong style={{ color: '#ffffff' }}>{email}</strong>
+          </p>
+          <form onSubmit={handleVerifyOtp} style={styles.form}>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>Code de vérification</label>
+              <input
+                type="text"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="123456"
+                required
+                maxLength={6}
+                style={{ ...styles.input, ...styles.inputMono, textAlign: 'center', fontSize: '24px', letterSpacing: '8px' }}
+              />
+            </div>
+            {error && <div style={styles.errorBox}>{error}</div>}
+            {success && <div style={styles.successBox}>{success}</div>}
+            <button type="submit" disabled={loading || otpCode.length !== 6} style={styles.submitBtn}>
+              {loading ? 'Vérification...' : 'Vérifier le code'}
+            </button>
+          </form>
+          <div style={styles.toggleContainer}>
+            <button
+              type="button"
+              onClick={() => { setOtpStep(false); setOtpCode(''); setError(null); setSuccess(null); }}
+              style={styles.toggleBtn}
+            >
+              ← Retour
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
 
   // Affichage direct de la page de liaison Raspberry Pi dès la validation de l'inscription !
   if (!isLogin && signupStep === 2) {

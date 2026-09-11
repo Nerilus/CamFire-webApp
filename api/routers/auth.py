@@ -87,10 +87,12 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(new_user)
 
-    return new_user
 
-@router.post("/login", response_model=Token)
+@router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    from datetime import timedelta
+    from services.mail_service import generate_otp, send_otp_email
+
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -98,6 +100,48 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Email ou mot de passe incorrect",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    otp = generate_otp()
+    user.otp_code = otp
+    user.otp_expires_at = datetime.utcnow() + timedelta(minutes=10)
+    db.commit()
+
+    try:
+        send_otp_email(user.email, otp)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erreur lors de l'envoi de l'email : {str(e)}",
+        )
+
+    return {"message": "Code de vérification envoyé par email", "email": user.email}
+
+
+@router.post("/verify-otp", response_model=Token)
+def verify_otp(email: str, otp: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utilisateur introuvable",
+        )
+
+    if user.otp_code != otp:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Code incorrect",
+        )
+
+    if user.otp_expires_at is None or datetime.utcnow() > user.otp_expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Code expiré",
+        )
+
+    user.otp_code = None
+    user.otp_expires_at = None
+    db.commit()
+
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 

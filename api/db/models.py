@@ -11,6 +11,9 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     firstname = Column(String, nullable=True)
     lastname = Column(String, nullable=True)
+    otp_code = Column(String, nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+
     
     contacts = relationship("EmergencyContact", back_populates="user", cascade="all, delete-orphan")
     user_devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
