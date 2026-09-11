@@ -21,6 +21,9 @@ import threading
 import argparse
 import urllib.request
 import urllib.error
+import ssl
+
+ssl_context = ssl._create_unverified_context()
 
 DEFAULT_SERVER_URL = "https://51.15.143.236.sslip.io"
 DEFAULT_PROVISION_KEY = "cf-factory-sec-2026-pi4-prod-key"
@@ -141,7 +144,7 @@ def send_heartbeat(hw_id: str, server_url: str, provision_key: str, stream_url: 
         headers={"Content-Type": "application/json"}
     )
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5, context=ssl_context) as resp:
             return resp.status == 200
     except Exception as e:
         return False
@@ -219,7 +222,7 @@ def main():
                 "X-Device-Provision-Key": args.key
             }
         )
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        with urllib.request.urlopen(req, timeout=6, context=ssl_context) as resp:
             print(f"    • Synchronisation Serveur        : \033[1;32mSuccès (Enregistré & Stream mis à jour)\033[0m")
     except Exception as e:
         print(f"    • Synchronisation Serveur        : Attention ({e})")
