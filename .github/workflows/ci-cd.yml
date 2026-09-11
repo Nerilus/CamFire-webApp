@@ -113,6 +113,8 @@ jobs:
               fi
             fi
 
+            git config --global --add safe.directory "$DEPLOY_PATH" || true
+
             # 2. Récupération des dernières modifications de main
             echo "📥 Synchronisation du code Git (main)..."
             git fetch origin main

@@ -16,6 +16,9 @@ echo "🚀 Déploiement de CamFire en production..."
 echo "📂 Répertoire : $ROOT_DIR"
 echo "=========================================================="
 
+# Configuration safe directory pour éviter tout blocage de permissions
+git config --global --add safe.directory "$ROOT_DIR" || true
+
 # 1. Vérification du fichier .env
 if [ ! -f ".env" ]; then
     echo "⚠️ Aucun fichier .env trouvé. Copie depuis .env.production.example..."
