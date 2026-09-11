@@ -25,7 +25,7 @@ from schemas.device_schema import (
     RefreshCodeResponse
 )
 from core.security import verify_password, get_password_hash
-from core.config import SECRET_KEY, ALGORITHM, DEVICE_PROVISION_KEY
+from core.config import SECRET_KEY, ALGORITHM, DEVICE_PROVISION_KEY, CAMERA_URL
 from routers.auth import get_current_user
 from services.predict import generate_video_stream
 
@@ -353,11 +353,30 @@ def pair_device(
 
     device = db.query(Device).filter(Device.device_id == target_device_id).first()
     if not device:
-        record_pair_failure(client_id, target_device_id)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Aucun appareil trouvé avec l'identifiant matériel '{pair_in.device_id}'."
-        )
+        # Enregistrement automatique au premier appairage si l'appareil a un format valide
+        if len(pair_in.pairing_code.strip()) >= 4:
+            device = Device(
+                device_id=target_device_id,
+                name=pair_in.name.strip() if pair_in.name else "Raspberry 4",
+                hashed_pairing_code=get_password_hash(pair_in.pairing_code.strip()),
+                stream_url=CAMERA_URL,
+                code_expires_at=datetime.utcnow() + timedelta(hours=24),
+                is_paired=False
+            )
+            db.add(device)
+            db.commit()
+            db.refresh(device)
+        else:
+            record_pair_failure(client_id, target_device_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Aucun appareil trouvé avec l'identifiant matériel '{pair_in.device_id}'."
+            )
+
+    # Si l'appareil avait une ancienne URL locale, la basculer vers CAMERA_URL
+    if device and ("172.20.10.2" in (device.stream_url or "") or "localhost" in (device.stream_url or "")):
+        device.stream_url = CAMERA_URL
+        db.commit()
 
     # 2. Vérification de l'expiration du code (TTL)
     if device.code_expires_at and datetime.utcnow() > device.code_expires_at:
