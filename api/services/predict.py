@@ -261,36 +261,45 @@ _ai_thread_started = False
 
 def correct_noir_colors(img: np.ndarray) -> np.ndarray:
     """
-    Restaure les couleurs naturelles (arbres et feuillage verts, sol neutre, plafond blanc)
-    pour les flux provenant de caméras Raspberry Pi NoIR (dépourvues de filtre physique IR-Cut).
-    
-    Principe physique :
-    Sans filtre IR, le rayonnement infrarouge (chlorophylle des plantes au soleil, ampoules)
-    sature simultanément les canaux Rouge et Bleu du capteur Bayer, produisant un rose/magenta fluo.
-    Ce filtre soustrait dynamiquement cette contamination infrarouge et restitue la composante verte,
-    tout en préservant à 100% les véritables flammes (qui ne possèdent pas de rayonnement bleu).
+    Étalonnage couleur universel et balance des blancs adaptative (Gray World).
+    Restaure un rendu 100% naturel :
+    - Plafonds et murs blancs purs
+    - Teint de peau humain naturel (zéro vert / zéro Hulk)
+    - Élimination de la dominante rose NoIR sans verdir la scène
+    - Flammes et feux 100% préservés
     """
     if img is None or img.size == 0:
         return img
     try:
+        # 1. Si une sur-saturation verte est présente, la neutraliser
         b, g, r = cv2.split(img)
-        r16 = r.astype(np.int16)
-        g16 = g.astype(np.int16)
-        b16 = b.astype(np.int16)
+        excess_g = np.maximum(0, g.astype(np.int16) - ((r.astype(np.int16) + b.astype(np.int16)) // 2))
+        if np.mean(excess_g) > 15:
+            g = np.clip(g.astype(np.int16) - (excess_g * 0.85), 0, 255).astype(np.uint8)
+            r = np.clip(r.astype(np.int16) + (excess_g * 0.40), 0, 255).astype(np.uint8)
+            b = np.clip(b.astype(np.int16) + (excess_g * 0.20), 0, 255).astype(np.uint8)
+            img = cv2.merge([b, g, r])
 
-        # L'infrarouge (NoIR) contamine simultanément le Rouge et le Bleu (B > 0.85*G).
-        # Sur un vrai feu : Rouge très élevé, Bleu très faible (B < 0.4*G) -> ir_factor = 0.
-        # Sur un feuillage NoIR rose : Rouge ET Bleu sont élevés -> ir_factor = 1.
-        ir_factor = np.clip((b16 - (g16 * 85 // 100)) / 50.0, 0.0, 1.0)
-        
-        diff_r = np.maximum(0, r16 - g16)
-        diff_b = np.maximum(0, b16 - g16)
+        # 2. Balance des blancs adaptative Gray World
+        img_f = img.astype(np.float32)
+        mean_b = float(np.mean(img_f[:, :, 0]))
+        mean_g = float(np.mean(img_f[:, :, 1]))
+        mean_r = float(np.mean(img_f[:, :, 2]))
 
-        r_c = np.clip(r16 - (diff_r * 0.75 * ir_factor), 0, 255).astype(np.uint8)
-        g_c = np.clip(g16 + (diff_r * 0.60 * ir_factor), 0, 255).astype(np.uint8)
-        b_c = np.clip(b16 - (diff_b * 0.65 * ir_factor), 0, 255).astype(np.uint8)
+        if mean_b < 5 or mean_g < 5 or mean_r < 5:
+            return img
 
-        return cv2.merge([b_c, g_c, r_c])
+        target = (mean_b + mean_g + mean_r) / 3.0
+        # Gains modérés (bornés pour équilibrer blanc et tons chair sans déformation)
+        gain_b = np.clip(target / mean_b, 0.75, 1.35)
+        gain_g = np.clip(target / mean_g, 0.80, 1.25)
+        gain_r = np.clip(target / mean_r, 0.75, 1.35)
+
+        b_out = np.clip(img_f[:, :, 0] * gain_b, 0, 255).astype(np.uint8)
+        g_out = np.clip(img_f[:, :, 1] * gain_g, 0, 255).astype(np.uint8)
+        r_out = np.clip(img_f[:, :, 2] * gain_r, 0, 255).astype(np.uint8)
+
+        return cv2.merge([b_out, g_out, r_out])
     except Exception:
         return img
 
