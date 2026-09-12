@@ -31,7 +31,7 @@ services:
       - DATABASE_URL=postgresql://mon_user:mon_mot_de_passe@db:5432/mon_app_db
       - CAMERA_URL=http://172.20.10.2:8080/
       - ACCESS_TOKEN_EXPIRE_MINUTES=43200
-      - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/1547230234250575963/VzVrEp9Ekw9C7YG6-FkmIGYzmWM_RSu7Ka1KRBDIe50LhfDd8RliAo9gp3v0amZ4mCro
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USERNAME=${SMTP_USERNAME:-}

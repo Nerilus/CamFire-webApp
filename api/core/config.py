@@ -23,7 +23,7 @@ DEVICE_PROVISION_KEY = os.getenv("DEVICE_PROVISION_KEY", "cf-factory-sec-2026-pi
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 
 # Discord Webhook URL pour les tickets de réparation
-DISCORD_TICKET_WEBHOOK_URL = os.getenv("DISCORD_TICKET_WEBHOOK_URL", "https://discord.com/api/webhooks/1547979594492153928/ov1ZP-fzFcIAXLwtaC4h5OcaVjyBzSkcQOgl_5bXUenS1J1lljUtLnQWxIr6660cER4w")
+DISCORD_TICKET_WEBHOOK_URL = os.getenv("DISCORD_TICKET_WEBHOOK_URL", "")
 
 # Configuration Double Authentification & SMTP Email
 OTP_EXPIRE_MINUTES = int(os.getenv("OTP_EXPIRE_MINUTES", 10))
