@@ -171,7 +171,15 @@ export const Home: React.FC = () => {
               doubleClickZoom={false}
               touchZoom={false}
             >
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+              <TileLayer 
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}" 
+                maxZoom={16}
+              />
+              <TileLayer 
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}" 
+                maxZoom={16}
+                opacity={0.9}
+              />
               {sites.length > 0 ? (
                 sites.map(s => (
                   <CircleMarker 
