@@ -61,6 +61,7 @@ def process_image(image_bytes: bytes):
     # Lire l'image envoyée (OpenCV)
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    img = correct_noir_colors(img)
     
     print("Analyse de l'image en cours par les modèles YOLO IA...")
     # Lancer la prédiction avec un seuil de confiance calibré (0.35)
@@ -256,7 +257,40 @@ latest_detection = {
 _ai_lock = threading.Lock()
 _current_raw_frame = None
 _current_boxes = []
-_ai_thread_started = False
+def correct_noir_colors(img: np.ndarray) -> np.ndarray:
+    """
+    Restaure les couleurs naturelles (arbres et feuillage verts, sol neutre, plafond blanc)
+    pour les flux provenant de caméras Raspberry Pi NoIR (dépourvues de filtre physique IR-Cut).
+    
+    Principe physique :
+    Sans filtre IR, le rayonnement infrarouge (chlorophylle des plantes au soleil, ampoules)
+    sature simultanément les canaux Rouge et Bleu du capteur Bayer, produisant un rose/magenta fluo.
+    Ce filtre soustrait dynamiquement cette contamination infrarouge et restitue la composante verte,
+    tout en préservant à 100% les véritables flammes (qui ne possèdent pas de rayonnement bleu).
+    """
+    if img is None or img.size == 0:
+        return img
+    try:
+        b, g, r = cv2.split(img)
+        r16 = r.astype(np.int16)
+        g16 = g.astype(np.int16)
+        b16 = b.astype(np.int16)
+
+        # L'infrarouge (NoIR) contamine simultanément le Rouge et le Bleu (B > 0.85*G).
+        # Sur un vrai feu : Rouge très élevé, Bleu très faible (B < 0.4*G) -> ir_factor = 0.
+        # Sur un feuillage NoIR rose : Rouge ET Bleu sont élevés -> ir_factor = 1.
+        ir_factor = np.clip((b16 - (g16 * 85 // 100)) / 50.0, 0.0, 1.0)
+        
+        diff_r = np.maximum(0, r16 - g16)
+        diff_b = np.maximum(0, b16 - g16)
+
+        r_c = np.clip(r16 - (diff_r * 0.75 * ir_factor), 0, 255).astype(np.uint8)
+        g_c = np.clip(g16 + (diff_r * 0.60 * ir_factor), 0, 255).astype(np.uint8)
+        b_c = np.clip(b16 - (diff_b * 0.65 * ir_factor), 0, 255).astype(np.uint8)
+
+        return cv2.merge([b_c, g_c, r_c])
+    except Exception:
+        return img
 
 def validate_fire_or_smoke(crop, class_name: str, conf: float, person_boxes=None, fire_box=None) -> bool:
     """
@@ -493,6 +527,9 @@ def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
                 # Formatage standard
                 if frame.shape[0] != 480 or frame.shape[1] != 640:
                     frame = cv2.resize(frame, (640, 480))
+
+                # Restauration automatique des couleurs NoIR (végétation verte, sol naturel, anti-rose)
+                frame = correct_noir_colors(frame)
 
                 # Transmettre la frame au thread IA et récupérer les dernières boîtes
                 with _ai_lock:
