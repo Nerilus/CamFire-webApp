@@ -132,8 +132,8 @@ def validate_stream_url(url: str):
         raise HTTPException(status_code=400, detail="Protocole de flux non autorisé (http, https ou rtsp uniquement).")
     hostname = (parsed.hostname or "").lower()
     forbidden = ["localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254"]
-    if hostname in forbidden or hostname.startswith("127."):
-        raise HTTPException(status_code=400, detail="Adresse de flux non autorisée (cibles locales ou métadonnées interdites).")
+    if hostname in forbidden or hostname.startswith("127.") or hostname.startswith("172.20.") or hostname.startswith("192.168.") or hostname.startswith("10."):
+        raise HTTPException(status_code=400, detail="Adresse de flux non autorisée (les adresses IP locales privées ne peuvent pas être jointes par le serveur de production).")
 
 # ---------------------------------------------------------------------------
 # 4. Helper d'authentification fallback (Header Bearer)
