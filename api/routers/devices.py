@@ -8,6 +8,7 @@ import time
 import secrets
 import urllib.parse
 import urllib.request
+import ssl
 import hmac
 import hashlib
 import jwt
@@ -916,11 +917,18 @@ def control_device_alarm(
 
     base_url = device.stream_url.rsplit('/', 1)[0] if '/' in device.stream_url else device.stream_url
     target_url = f"{base_url}/alarm?action={req.action}&duration={req.duration_seconds or 15}"
+    ctx = ssl._create_unverified_context()
     try:
         r = urllib.request.Request(target_url, data=b"", method="POST")
-        urllib.request.urlopen(r, timeout=3)
+        urllib.request.urlopen(r, timeout=3, context=ctx)
     except Exception as e:
-        print(f"[ALARM] Relais direct Raspberry Pi: {e}")
+        print(f"[ALARM] Relais POST échoué: {e} -> Tentative en GET...")
+        try:
+            r_get = urllib.request.Request(target_url, method="GET")
+            urllib.request.urlopen(r_get, timeout=3, context=ctx)
+            print("[ALARM] Relais GET réussi vers le Raspberry Pi !")
+        except Exception as e2:
+            print(f"[ALARM] Relais GET échoué: {e2}")
 
     return {
         "status": "ok",
@@ -958,11 +966,17 @@ def control_device_maintenance(
 
     base_url = device.stream_url.rsplit('/', 1)[0] if '/' in device.stream_url else device.stream_url
     target_url = f"{base_url}/maintenance?enabled={str(req.enabled).lower()}"
+    ctx = ssl._create_unverified_context()
     try:
         r = urllib.request.Request(target_url, data=b"", method="POST")
-        urllib.request.urlopen(r, timeout=3)
+        urllib.request.urlopen(r, timeout=3, context=ctx)
     except Exception as e:
-        print(f"[MAINTENANCE] Relais direct: {e}")
+        print(f"[MAINTENANCE] Relais POST échoué: {e} -> Tentative en GET...")
+        try:
+            r_get = urllib.request.Request(target_url, method="GET")
+            urllib.request.urlopen(r_get, timeout=3, context=ctx)
+        except Exception as e2:
+            print(f"[MAINTENANCE] Relais GET échoué: {e2}")
 
     return {
         "status": "ok",

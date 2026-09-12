@@ -269,6 +269,43 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             except Exception:
                 try: proc.terminate()
                 except Exception: pass
+        elif self.path.startswith('/alarm'):
+            parsed = urllib.parse.urlparse(self.path)
+            params = urllib.parse.parse_qs(parsed.query)
+            action = params.get('action', ['start'])[0]
+            duration = int(params.get('duration', [15])[0])
+            print(f"[REQUÊTE HTTP GET] /alarm reçue -> action: {action}, durée: {duration}s")
+            if action == 'start':
+                start_alarm_siren(duration_seconds=duration)
+            else:
+                stop_alarm_siren()
+            resp = json.dumps({
+                "status": "ok",
+                "action": action,
+                "alarm_active": is_alarm_active
+            }).encode('utf-8')
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+        elif self.path.startswith('/maintenance'):
+            parsed = urllib.parse.urlparse(self.path)
+            params = urllib.parse.parse_qs(parsed.query)
+            enabled_str = params.get('enabled', ['true'])[0].lower()
+            is_maintenance_mode = enabled_str in ('true', '1', 'yes')
+            print(f"[MODE TRAVAUX GET] {'ACTIVÉ' if is_maintenance_mode else 'DÉSACTIVÉ'} sur le Pi.")
+            resp = json.dumps({
+                "status": "ok",
+                "is_maintenance_mode": is_maintenance_mode
+            }).encode('utf-8')
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
         elif self.path.startswith('/control'):
             parsed = urllib.parse.urlparse(self.path)
             params = urllib.parse.parse_qs(parsed.query)
