@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { API_URL } from '../config/api';
-import { DownloadIcon, ShareIcon, SmokeIcon, CheckCircleIcon, WarningIcon, EyeIcon } from '../components/icons';
+import { DownloadIcon, ShareIcon, SmokeIcon, CheckCircleIcon, WarningIcon, EyeIcon, CalendarIcon, ClockIcon } from '../components/icons';
 import { FireAlertModal, type AlertRecord } from '../components/FireAlertModal';
+import { formatAlertItem, groupAlertsByDate } from '../utils/dateGrouping';
 import './History.css';
 
 export type ScanStatus = 'fire' | 'safe' | 'warn';
@@ -30,29 +31,7 @@ export const History: React.FC = () => {
       const res = await fetch(`${API_URL}/alerts/`);
       if (res.ok) {
         const data = await res.json();
-        const formattedData: AlertRecord[] = data.map((alert: any) => {
-          const dateObj = new Date(alert.date);
-          const formattedDate = dateObj.toLocaleDateString('fr-FR', {
-            day: 'numeric', month: 'long', year: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-          });
-
-          let fullImageUrl = alert.image_url;
-          if (fullImageUrl && !fullImageUrl.startsWith('http') && !fullImageUrl.startsWith('data:')) {
-            fullImageUrl = `${API_URL}${fullImageUrl.startsWith('/') ? '' : '/'}${fullImageUrl}`;
-          }
-
-          return {
-            id: alert.id,
-            status: alert.status,
-            location: (alert.location || '').replace(/\(Feu\)/g, '(Fumée)'),
-            date: formattedDate,
-            confidence: alert.confidence,
-            coords: alert.coords || '46.2276°N 2.2137°E',
-            image_url: fullImageUrl,
-            detection_type: alert.detection_type || (alert.status === 'fire' ? 'smoke' : 'person')
-          };
-        });
+        const formattedData: AlertRecord[] = data.map((alert: any) => formatAlertItem(alert, API_URL));
         setHistory(formattedData);
       }
     } catch (err) {
@@ -69,6 +48,7 @@ export const History: React.FC = () => {
   }, []);
 
   const items = filter === 'all' || filter === 'shared' ? history : history.filter((r) => r.status === filter);
+  const groupedItems = groupAlertsByDate(items);
 
   return (
     <div className="page">
@@ -91,88 +71,108 @@ export const History: React.FC = () => {
         ))}
       </div>
 
-      <div className="timeline">
-        {loading ? (
-          <p className="alerts-empty">Chargement de l'historique...</p>
-        ) : items.length === 0 ? (
-          <p className="alerts-empty">Aucun historique disponible.</p>
-        ) : (
-          items.map((rec) => {
-            const meta = statusMeta[rec.status as ScanStatus] || statusMeta['safe'];
-            return (
-              <div 
-                className={`timeline-item ${rec.image_url ? 'has-photo' : ''}`} 
-                key={rec.id}
-                onClick={() => setSelectedAlert(rec)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    setSelectedAlert(rec);
-                  }
-                }}
-              >
-                <div className={`timeline-icon ${meta.badge}`}>
-                  <meta.Icon size={16} />
+      {loading ? (
+        <p className="alerts-empty">Chargement de l'historique...</p>
+      ) : groupedItems.length === 0 ? (
+        <p className="alerts-empty">Aucun historique disponible.</p>
+      ) : (
+        <div className="history-date-groups">
+          {groupedItems.map((group) => (
+            <div className="history-date-group" key={group.dateKey}>
+              <div className="date-group-header">
+                <div className="date-group-pill">
+                  <CalendarIcon size={15} className="date-group-icon" />
+                  <span className="date-group-title">{group.label}</span>
+                  {group.subLabel && <span className="date-group-sub">({group.subLabel})</span>}
                 </div>
-                <div className="timeline-content">
-                  <div className="timeline-top">
-                    <div className="timeline-top-badges">
-                      <span className={`badge ${meta.badge}`}>{meta.label}</span>
-                      {rec.image_url && (
-                        <span className="timeline-photo-tag">
-                          Photo
-                        </span>
-                      )}
-                    </div>
-                    <button 
-                      type="button"
-                      className="timeline-share-btn" 
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        if (navigator.share) {
-                          navigator.share({ title: `CamFire: ${rec.location}`, text: `${rec.location} - ${rec.date}` });
+                <span className="date-group-badge">
+                  {group.items.length} événement{group.items.length > 1 ? 's' : ''}
+                </span>
+              </div>
+
+              <div className="timeline">
+                {group.items.map((rec) => {
+                  const meta = statusMeta[rec.status as ScanStatus] || statusMeta['safe'];
+                  return (
+                    <div 
+                      className={`timeline-item ${rec.image_url ? 'has-photo' : ''}`} 
+                      key={rec.id}
+                      onClick={() => setSelectedAlert(rec)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          setSelectedAlert(rec);
                         }
                       }}
-                      aria-label="Partager"
                     >
-                      <ShareIcon size={15} className="timeline-share" />
-                    </button>
-                  </div>
-                  <strong className="timeline-location">{rec.location}</strong>
-                  <span className="timeline-date">{rec.date}</span>
-
-                  {rec.confidence !== undefined && (
-                    <div className="confidence">
-                      <span className="confidence-label">CONFIANCE</span>
-                      <div className="confidence-bar">
-                        <div
-                          className={`confidence-fill ${rec.status === 'fire' ? 'high' : 'mid'}`}
-                          style={{ width: `${rec.confidence > 1 ? rec.confidence : rec.confidence * 100}%` }}
-                        />
+                      <div className={`timeline-icon ${meta.badge}`}>
+                        <meta.Icon size={16} />
                       </div>
-                      <span className="confidence-value">
-                        {Math.round(rec.confidence > 1 ? rec.confidence : rec.confidence * 100)}%
-                      </span>
-                    </div>
-                  )}
-
-                  {rec.image_url && (
-                    <div className="timeline-photo-card">
-                      <div className="timeline-photo-thumb-wrapper">
-                        <img src={rec.image_url} alt="Capture alerte" className="timeline-photo-thumb" />
-                        <div className="timeline-photo-overlay">
-                          <EyeIcon size={13} /> Voir la photo associée
+                      <div className="timeline-content">
+                        <div className="timeline-top">
+                          <div className="timeline-top-badges">
+                            <span className={`badge ${meta.badge}`}>{meta.label}</span>
+                            {rec.image_url && (
+                              <span className="timeline-photo-tag">
+                                Photo
+                              </span>
+                            )}
+                          </div>
+                          <button 
+                            type="button"
+                            className="timeline-share-btn" 
+                            onClick={(e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              if (navigator.share) {
+                                navigator.share({ title: `CamFire: ${rec.location}`, text: `${rec.location} - ${rec.date}` });
+                              }
+                            }}
+                            aria-label="Partager"
+                          >
+                            <ShareIcon size={15} className="timeline-share" />
+                          </button>
                         </div>
+                        <strong className="timeline-location">{rec.location}</strong>
+                        <span className="timeline-date">
+                          <ClockIcon size={12} style={{ display: 'inline', verticalAlign: '-1px', marginRight: '4px' }} />
+                          {rec.formattedTime ? `À ${rec.formattedTime}` : rec.date}
+                        </span>
+
+                        {rec.confidence !== undefined && (
+                          <div className="confidence">
+                            <span className="confidence-label">CONFIANCE</span>
+                            <div className="confidence-bar">
+                              <div
+                                className={`confidence-fill ${rec.status === 'fire' ? 'high' : 'mid'}`}
+                                style={{ width: `${rec.confidence > 1 ? rec.confidence : rec.confidence * 100}%` }}
+                              />
+                            </div>
+                            <span className="confidence-value">
+                              {Math.round(rec.confidence > 1 ? rec.confidence : rec.confidence * 100)}%
+                            </span>
+                          </div>
+                        )}
+
+                        {rec.image_url && (
+                          <div className="timeline-photo-card">
+                            <div className="timeline-photo-thumb-wrapper">
+                              <img src={rec.image_url} alt="Capture alerte" className="timeline-photo-thumb" />
+                              <div className="timeline-photo-overlay">
+                                <EyeIcon size={13} /> Voir la photo associée
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {selectedAlert && (
         <FireAlertModal
