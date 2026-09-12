@@ -457,33 +457,3 @@ def update_user_password(password_update: PasswordUpdate, db: Session = Depends(
     current_user.hashed_password = get_password_hash(password_update.new_password)
     db.commit()
     return {"message": "Mot de passe mis à jour avec succès"}
-
-
-@router.post("/forgot-password")
-def forgot_password(email: str, db: Session = Depends(get_db)):
-    import random
-    from services.email import send_reset_password_email
-
-    user = db.query(User).filter(User.email == email).first()
-    if user:
-        code = str(random.randint(100000, 999999))
-        user.reset_code = code
-        user.reset_code_expires_at = datetime.utcnow() + timedelta(minutes=30)
-        db.commit()
-        send_reset_password_email(user.email, code)
-    return {"message": "Si cet email existe, un code de réinitialisation a été envoyé."}
-
-
-@router.post("/reset-password")
-def reset_password(email: str, code: str, new_password: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == email).first()
-    if not user or user.reset_code != code:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Code invalide.")
-    if user.reset_code_expires_at is None or datetime.utcnow() > user.reset_code_expires_at:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Code expiré.")
-
-    user.hashed_password = get_password_hash(new_password)
-    user.reset_code = None
-    user.reset_code_expires_at = None
-    db.commit()
-    return {"message": "Mot de passe réinitialisé avec succès."}
