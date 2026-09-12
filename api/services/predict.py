@@ -256,16 +256,18 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                         notified_emails = set()
                         for u in target_users:
                             if getattr(u, "emergency_alerts_enabled", True) and getattr(u, "emergency_alert_email", None):
-                                em = u.emergency_alert_email.strip()
-                                if em and em not in notified_emails:
-                                    notified_emails.add(em)
-                                    send_fire_emergency_alert_email(
-                                        recipient=em,
-                                        device_name=location,
-                                        location=location,
-                                        confidence=confidence,
-                                        image_path=filepath
-                                    )
+                                raw_emails = u.emergency_alert_email or ""
+                                list_emails = [e.strip() for e in raw_emails.replace(";", ",").split(",") if e.strip()]
+                                for em in list_emails:
+                                    if em and em not in notified_emails:
+                                        notified_emails.add(em)
+                                        send_fire_emergency_alert_email(
+                                            recipient=em,
+                                            device_name=location,
+                                            location=location,
+                                            confidence=confidence,
+                                            image_path=filepath
+                                        )
                     except Exception as email_err:
                         print(f"Erreur envoi alerte email urgence incendie: {email_err}")
             except Exception as dbe:

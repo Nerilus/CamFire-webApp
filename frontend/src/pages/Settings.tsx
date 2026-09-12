@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon, TrashIcon } from '../components/icons';
+import { PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon, TrashIcon, MailIcon } from '../components/icons';
 import { useAuth } from '../context/AuthContext';
 import { contactService, type EmergencyContact } from '../services/contactService';
 import { deviceService, type Device, type DeviceMember } from '../services/deviceService';
@@ -29,7 +29,8 @@ export const Settings: React.FC = () => {
 
   // Alertes E-mail d'Urgence (Photo Snapshot)
   const [emergencyAlertsEnabled, setEmergencyAlertsEnabled] = useState(true);
-  const [emergencyAlertEmail, setEmergencyAlertEmail] = useState('');
+  const [emergencyAlertEmails, setEmergencyAlertEmails] = useState<string[]>([]);
+  const [newEmergencyEmail, setNewEmergencyEmail] = useState('');
   const [savingAlertSettings, setSavingAlertSettings] = useState(false);
   const [testingAlert, setTestingAlert] = useState(false);
   const [alertFeedbackMsg, setAlertFeedbackMsg] = useState<{ type: string; text: string }>({ type: '', text: '' });
@@ -78,7 +79,7 @@ export const Settings: React.FC = () => {
     try {
       const settings = await contactService.getEmergencyAlertSettings();
       setEmergencyAlertsEnabled(settings.emergency_alerts_enabled);
-      setEmergencyAlertEmail(settings.emergency_alert_email || '');
+      setEmergencyAlertEmails(settings.emergency_alert_emails || []);
     } catch (e) {
       console.error('Erreur chargement alertes email:', e);
     }
@@ -98,31 +99,63 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleSaveAlertSettings = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setSavingAlertSettings(true);
-    setAlertFeedbackMsg({ type: '', text: '' });
-    try {
-      await contactService.updateEmergencyAlertSettings(emergencyAlertEmail, emergencyAlertsEnabled);
-      setAlertFeedbackMsg({ type: 'success', text: "Paramètres d'alerte e-mail d'urgence enregistrés avec succès." });
-    } catch (err: any) {
-      setAlertFeedbackMsg({ type: 'error', text: err.message || "Erreur lors de l'enregistrement." });
-    } finally {
-      setSavingAlertSettings(false);
-    }
-  };
-
   const handleToggleEmergencyAlerts = async () => {
     const newVal = !emergencyAlertsEnabled;
     setEmergencyAlertsEnabled(newVal);
     try {
-      await contactService.updateEmergencyAlertSettings(emergencyAlertEmail, newVal);
+      await contactService.updateEmergencyAlertSettings(emergencyAlertEmails, newVal);
       setAlertFeedbackMsg({
         type: 'success',
         text: newVal ? "Alertes incendie par e-mail activées." : "Alertes incendie par e-mail désactivées."
       });
     } catch (err: any) {
       setAlertFeedbackMsg({ type: 'error', text: err.message || "Erreur lors de la mise à jour." });
+    }
+  };
+
+  const handleAddEmergencyEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const emailToAdd = newEmergencyEmail.trim().toLowerCase();
+    if (!emailToAdd) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailToAdd)) {
+      setAlertFeedbackMsg({ type: 'error', text: "Veuillez entrer une adresse e-mail valide." });
+      return;
+    }
+    if (emergencyAlertEmails.some((em) => em.toLowerCase() === emailToAdd)) {
+      setAlertFeedbackMsg({ type: 'error', text: "Cette adresse e-mail est déjà dans la liste des destinataires." });
+      return;
+    }
+
+    const updated = [...emergencyAlertEmails, emailToAdd];
+    setSavingAlertSettings(true);
+    setAlertFeedbackMsg({ type: '', text: '' });
+    try {
+      const res = await contactService.updateEmergencyAlertSettings(updated, emergencyAlertsEnabled);
+      setEmergencyAlertEmails(res.emergency_alert_emails);
+      setNewEmergencyEmail('');
+      setAlertFeedbackMsg({ type: 'success', text: `L'adresse e-mail ${emailToAdd} a été ajoutée avec succès.` });
+    } catch (err: any) {
+      setAlertFeedbackMsg({ type: 'error', text: err.message || "Erreur lors de l'ajout de l'e-mail." });
+    } finally {
+      setSavingAlertSettings(false);
+    }
+  };
+
+  const handleDeleteEmergencyEmail = async (emailToDelete: string) => {
+    if (!window.confirm(`Supprimer ${emailToDelete} de la liste des e-mails d'urgence ?`)) {
+      return;
+    }
+    const updated = emergencyAlertEmails.filter((em) => em.toLowerCase() !== emailToDelete.toLowerCase());
+    setSavingAlertSettings(true);
+    setAlertFeedbackMsg({ type: '', text: '' });
+    try {
+      const res = await contactService.updateEmergencyAlertSettings(updated, emergencyAlertsEnabled);
+      setEmergencyAlertEmails(res.emergency_alert_emails);
+      setAlertFeedbackMsg({ type: 'success', text: `L'adresse ${emailToDelete} a été supprimée des alertes.` });
+    } catch (err: any) {
+      setAlertFeedbackMsg({ type: 'error', text: err.message || "Erreur lors de la suppression de l'e-mail." });
+    } finally {
+      setSavingAlertSettings(false);
     }
   };
 
@@ -233,7 +266,12 @@ export const Settings: React.FC = () => {
 
       {/* 2. ALERTES E-MAIL D'URGENCE AVEC PHOTO */}
       <section className="settings-section">
-        <h2 className="settings-section-title">ALERTES E-MAIL D'URGENCE (PHOTO SNAPSHOT)</h2>
+        <div className="emergency-header-row">
+          <h2 className="settings-section-title" style={{ margin: 0 }}>ALERTES E-MAIL D'URGENCE (PHOTO SNAPSHOT)</h2>
+          <span className="emergency-badge-count">
+            {emergencyAlertEmails.length} e-mail{emergencyAlertEmails.length > 1 ? 's' : ''}
+          </span>
+        </div>
 
         {alertFeedbackMsg.text && (
           <div className={`settings-msg ${alertFeedbackMsg.type}`}>
@@ -249,7 +287,7 @@ export const Settings: React.FC = () => {
           <div className="settings-row" style={{ padding: 0, border: 'none', background: 'transparent' }}>
             <div className="settings-row-text">
               <strong>Activer les alertes incendie par e-mail</strong>
-              <span>Envoi immédiat avec photo en pièce jointe</span>
+              <span>Envoi immédiat avec photo en pièce jointe aux e-mails ci-dessous</span>
             </div>
             <button
               className={`toggle${emergencyAlertsEnabled ? ' on' : ''}`}
@@ -260,37 +298,80 @@ export const Settings: React.FC = () => {
             </button>
           </div>
 
-          <form onSubmit={handleSaveAlertSettings} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div className="emergency-input-group">
-              <label>Adresse e-mail à contacter en cas d'urgence</label>
+          {/* LISTE DES ADRESSES EMAIL CONFIGURÉES */}
+          <div className="emergency-emails-container">
+            <div className="emergency-emails-header">
+              <span className="emergency-emails-title">E-mails à contacter en cas d'alerte :</span>
+            </div>
+
+            {emergencyAlertEmails.length === 0 ? (
+              <div className="emergency-empty-state">
+                <MailIcon size={20} style={{ opacity: 0.6, color: '#ff5722' }} />
+                <span>Aucune adresse e-mail configurée. Ajoutez un contact ci-dessous pour être prévenu en cas d'incendie.</span>
+              </div>
+            ) : (
+              <div className="emergency-emails-list">
+                {emergencyAlertEmails.map((email) => (
+                  <div key={email} className="emergency-email-item">
+                    <div className="emergency-email-left">
+                      <div className="emergency-email-icon-wrapper">
+                        <MailIcon size={16} />
+                      </div>
+                      <div className="emergency-email-info">
+                        <span className="emergency-email-address">{email}</span>
+                        <span className="emergency-email-badge">Alerte avec photo</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="emergency-delete-btn"
+                      onClick={() => handleDeleteEmergencyEmail(email)}
+                      disabled={savingAlertSettings}
+                      title={`Supprimer ${email} des contacts d'urgence`}
+                    >
+                      <TrashIcon size={14} />
+                      <span>Supprimer</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* AJOUTER UNE NOUVELLE ADRESSE */}
+          <form onSubmit={handleAddEmergencyEmail} className="emergency-add-section">
+            <label className="emergency-input-label">Ajouter une adresse e-mail à contacter :</label>
+            <div className="emergency-input-row">
               <input
                 type="email"
                 className="emergency-input"
-                placeholder="ex: pompier@domaine.com ou contact.urgence@gmail.com"
-                value={emergencyAlertEmail}
-                onChange={(e) => setEmergencyAlertEmail(e.target.value)}
+                placeholder="ex: secours@domaine.com ou mon.contact@gmail.com"
+                value={newEmergencyEmail}
+                onChange={(e) => setNewEmergencyEmail(e.target.value)}
               />
-            </div>
-
-            <div className="emergency-actions-row">
               <button
                 type="submit"
-                className="btn emergency-save-btn"
-                disabled={savingAlertSettings}
+                className="btn btn-primary emergency-add-btn"
+                disabled={savingAlertSettings || !newEmergencyEmail.trim()}
               >
-                {savingAlertSettings ? 'Enregistrement...' : 'Enregistrer l\'e-mail'}
-              </button>
-              <button
-                type="button"
-                className="emergency-test-btn"
-                onClick={handleTestEmergencyAlert}
-                disabled={testingAlert}
-                title="Envoie un e-mail de test à cette adresse"
-              >
-                {testingAlert ? 'Envoi en cours...' : 'Tester l\'envoi d\'alerte'}
+                <PlusIcon size={16} />
+                <span>Ajouter</span>
               </button>
             </div>
           </form>
+
+          {/* BOUTON TESTER */}
+          <div className="emergency-test-container">
+            <button
+              type="button"
+              className="emergency-test-btn"
+              onClick={handleTestEmergencyAlert}
+              disabled={testingAlert}
+              title="Envoie un e-mail de test à tous les destinataires"
+            >
+              {testingAlert ? 'Envoi du test en cours...' : 'Tester l\'envoi d\'alerte incendie (e-mail de test)'}
+            </button>
+          </div>
         </div>
       </section>
 
