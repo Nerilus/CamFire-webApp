@@ -903,7 +903,7 @@ export const Carte: React.FC = () => {
                   disabled={isLocating}
                 >
                   <GpsIcon size={17} className={isLocating ? 'spinning' : ''} />
-                  <span>{isLocating ? 'Acquisition du signal GPS...' : '📍 Utiliser ma position GPS (Téléphone / PC)'}</span>
+                  <span>{isLocating ? 'Acquisition du signal GPS...' : 'Utiliser ma position GPS (Téléphone / PC)'}</span>
                 </button>
                 {gpsSuccess && gpsAccuracy !== null && (
                   <div className="gps-status-badge success">
