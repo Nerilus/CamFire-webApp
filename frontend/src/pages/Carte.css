@@ -718,22 +718,30 @@
   color: #f87171;
 }
 
-/* Floating GPS button on the map */
-.map-floating-gps-btn {
+/* Floating Controls on the map (Layer Switcher + GPS) */
+.map-floating-controls {
   position: absolute;
   top: 16px;
   right: 16px;
   z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.map-floating-btn {
   background: rgba(15, 23, 42, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   color: #f8fafc;
-  padding: 8px 14px;
+  padding: 8px 13px;
   border-radius: 12px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -741,19 +749,19 @@
   transition: all 0.2s ease;
 }
 
-.map-floating-gps-btn:hover {
+.map-floating-btn:hover {
   background: rgba(30, 41, 59, 0.95);
-  border-color: #3b82f6;
-  color: #60a5fa;
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 0 14px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
 }
 
-.map-floating-gps-btn:active {
+.map-floating-btn:active {
   transform: scale(0.96);
 }
 
-.map-floating-gps-btn.locating {
+.map-floating-btn.locating {
   border-color: #3b82f6;
   color: #60a5fa;
 }
