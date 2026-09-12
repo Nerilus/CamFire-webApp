@@ -77,7 +77,10 @@ def main():
     parser.add_argument("--quality", type=int, default=65, help="Qualité JPEG de 1 à 100 (défaut: 65 pour fluidité max)")
     parser.add_argument("--width", type=int, default=640, help="Largeur en pixels (défaut: 640)")
     parser.add_argument("--height", type=int, default=480, help="Hauteur en pixels (défaut: 480)")
-    parser.add_argument("--noir", action="store_true", help="Active l'étalonnage des couleurs pour caméra NoIR (anti-rose)")
+    parser.add_argument("--noir", action="store_true", default=True, help="Active l'étalonnage des couleurs pour caméra NoIR (anti-rose)")
+    parser.add_argument("--awb", default="incandescent", choices=["auto", "incandescent", "tungsten", "indoor", "daylight", "cloudy"], help="Mode de balance des blancs (défaut: incandescent pour neutraliser le rose NoIR)")
+    parser.add_argument("--red-gain", type=float, default=None, help="Gain manuel rouge (ex: 0.75 pour atténuer le rose)")
+    parser.add_argument("--blue-gain", type=float, default=None, help="Gain manuel bleu (ex: 1.4)")
     parser.add_argument("--port", type=int, default=8080, help="Port d'écoute HTTP (défaut: 8080)")
     args = parser.parse_args()
 
@@ -100,8 +103,6 @@ def main():
     print(f" Qualité JPEG : {args.quality}% (Images légères ~12 Ko pour 0 latence)")
     if tuning_file:
         print(f" Profil NoIR : Actif via {tuning_file}")
-    elif args.noir:
-        print(f" Profil NoIR : Demandé")
     print("=" * 60)
 
     # Initialisation de Picamera2 (compatible toutes versions libcamera / picamera2)
@@ -118,13 +119,38 @@ def main():
             else:
                 raise e
 
+    # Configuration des contrôles matériels (AwbMode & ColourGains pour éliminer la dominante rose NoIR)
+    controls_map = {"FrameRate": args.fps}
+    if args.red_gain is not None and args.blue_gain is not None:
+        controls_map["AwbEnable"] = False
+        controls_map["ColourGains"] = (args.red_gain, args.blue_gain)
+        print(f"    • Gains manuels appliqués : Rouge={args.red_gain}, Bleu={args.blue_gain}")
+    elif args.awb and args.awb != "auto":
+        awb_dict = {
+            "auto": 0,
+            "incandescent": 1,
+            "tungsten": 2,
+            "fluorescent": 3,
+            "indoor": 4,
+            "daylight": 5,
+            "cloudy": 6
+        }
+        mode_val = awb_dict.get(args.awb, 1)
+        controls_map["AwbMode"] = mode_val
+        print(f"    • Balance des blancs : {args.awb} (mode {mode_val}, réduction du rouge)")
+
     config = picam2.create_video_configuration(
         main={"size": (args.width, args.height)},
-        controls={"FrameRate": args.fps}
+        controls=controls_map
     )
     picam2.configure(config)
     output = StreamingOutput()
     picam2.start_recording(JpegEncoder(q=args.quality), FileOutput(output))
+
+    try:
+        picam2.set_controls(controls_map)
+    except Exception:
+        pass
 
     print(f"\n[OK] Serveur caméra actif sur http://0.0.0.0:{args.port}/stream.mjpg")
     print(f"     Prêt pour diffusion en direct à {args.fps} FPS réels.")
