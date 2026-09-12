@@ -23,6 +23,10 @@ class User(Base):
     reset_code = Column(String, nullable=True)
     reset_code_expires_at = Column(DateTime, nullable=True)
 
+    # Alertes e-mail d'urgence (Détection d'incendie avec photo)
+    emergency_alert_email = Column(String, nullable=True)
+    emergency_alerts_enabled = Column(Boolean, default=True, nullable=False)
+
     contacts = relationship("EmergencyContact", back_populates="user", cascade="all, delete-orphan")
     user_devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
     sites = relationship("Site", back_populates="user", cascade="all, delete-orphan")
@@ -111,6 +115,7 @@ class EmergencyContact(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=False)
     phone = Column(String, nullable=False)
+    email = Column(String, nullable=True)
     role = Column(String, nullable=False)
 
     user = relationship("User", back_populates="contacts")

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon, TrashIcon } from '../components/icons';
 import { useAuth } from '../context/AuthContext';
 import { contactService, type EmergencyContact } from '../services/contactService';
+import { deviceService, type Device, type DeviceMember } from '../services/deviceService';
 import './Settings.css';
 
 type Sensitivity = 'low' | 'medium' | 'high';
@@ -15,12 +16,28 @@ export const Settings: React.FC = () => {
   const [sensitivity, setSensitivity] = useState<Sensitivity>('high');
   const [notifications, setNotifications] = useState(true);
 
+  // Contacts d'urgence
   const [contacts, setContacts] = useState<EmergencyContact[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [newContact, setNewContact] = useState({ name: '', phone: '', role: '' });
+  const [newContact, setNewContact] = useState({ name: '', phone: '', email: '', role: '' });
+
+  // Gestion d'équipe & Accès partagés
+  const [ownedDevices, setOwnedDevices] = useState<Device[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{ [deviceId: string]: DeviceMember[] }>({});
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamMsg, setTeamMsg] = useState<{ type: string; text: string }>({ type: '', text: '' });
+
+  // Alertes E-mail d'Urgence (Photo Snapshot)
+  const [emergencyAlertsEnabled, setEmergencyAlertsEnabled] = useState(true);
+  const [emergencyAlertEmail, setEmergencyAlertEmail] = useState('');
+  const [savingAlertSettings, setSavingAlertSettings] = useState(false);
+  const [testingAlert, setTestingAlert] = useState(false);
+  const [alertFeedbackMsg, setAlertFeedbackMsg] = useState<{ type: string; text: string }>({ type: '', text: '' });
 
   useEffect(() => {
     loadContacts();
+    loadTeamData();
+    loadEmergencyAlertSettings();
   }, []);
 
   const loadContacts = async () => {
@@ -32,13 +49,103 @@ export const Settings: React.FC = () => {
     }
   };
 
+  const loadTeamData = async () => {
+    setTeamLoading(true);
+    try {
+      const myDevs = await deviceService.getMyDevices();
+      const owners = myDevs.filter((d) => d.role === 'owner');
+      setOwnedDevices(owners);
+
+      const membersMap: { [deviceId: string]: DeviceMember[] } = {};
+      for (const dev of owners) {
+        try {
+          const members = await deviceService.getDeviceMembers(dev.device_id);
+          // Ne conserver que les comptes invités (exclure le propriétaire lui-même)
+          membersMap[dev.device_id] = members.filter((m) => m.role !== 'owner');
+        } catch {
+          membersMap[dev.device_id] = [];
+        }
+      }
+      setTeamMembers(membersMap);
+    } catch (e) {
+      console.error('Erreur chargement équipe:', e);
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
+  const loadEmergencyAlertSettings = async () => {
+    try {
+      const settings = await contactService.getEmergencyAlertSettings();
+      setEmergencyAlertsEnabled(settings.emergency_alerts_enabled);
+      setEmergencyAlertEmail(settings.emergency_alert_email || '');
+    } catch (e) {
+      console.error('Erreur chargement alertes email:', e);
+    }
+  };
+
+  const handleRevokeMember = async (deviceId: string, userId: number, email: string) => {
+    if (!window.confirm(`Voulez-vous vraiment révoquer l'accès de ${email} à cet appareil ?`)) {
+      return;
+    }
+    setTeamMsg({ type: '', text: '' });
+    try {
+      await deviceService.revokeMember(deviceId, userId);
+      setTeamMsg({ type: 'success', text: `L'accès de ${email} a été révoqué avec succès.` });
+      loadTeamData();
+    } catch (err: any) {
+      setTeamMsg({ type: 'error', text: err.message || "Échec de la révocation de l'accès." });
+    }
+  };
+
+  const handleSaveAlertSettings = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSavingAlertSettings(true);
+    setAlertFeedbackMsg({ type: '', text: '' });
+    try {
+      await contactService.updateEmergencyAlertSettings(emergencyAlertEmail, emergencyAlertsEnabled);
+      setAlertFeedbackMsg({ type: 'success', text: "Paramètres d'alerte e-mail d'urgence enregistrés avec succès." });
+    } catch (err: any) {
+      setAlertFeedbackMsg({ type: 'error', text: err.message || "Erreur lors de l'enregistrement." });
+    } finally {
+      setSavingAlertSettings(false);
+    }
+  };
+
+  const handleToggleEmergencyAlerts = async () => {
+    const newVal = !emergencyAlertsEnabled;
+    setEmergencyAlertsEnabled(newVal);
+    try {
+      await contactService.updateEmergencyAlertSettings(emergencyAlertEmail, newVal);
+      setAlertFeedbackMsg({
+        type: 'success',
+        text: newVal ? "Alertes incendie par e-mail activées." : "Alertes incendie par e-mail désactivées."
+      });
+    } catch (err: any) {
+      setAlertFeedbackMsg({ type: 'error', text: err.message || "Erreur lors de la mise à jour." });
+    }
+  };
+
+  const handleTestEmergencyAlert = async () => {
+    setTestingAlert(true);
+    setAlertFeedbackMsg({ type: '', text: '' });
+    try {
+      const res = await contactService.testEmergencyAlert();
+      setAlertFeedbackMsg({ type: 'success', text: res.message });
+    } catch (err: any) {
+      setAlertFeedbackMsg({ type: 'error', text: err.message || "Erreur lors de l'envoi de l'e-mail de test." });
+    } finally {
+      setTestingAlert(false);
+    }
+  };
+
   const handleAddContact = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newContact.name || !newContact.phone || !newContact.role) return;
     try {
-      await contactService.addContact(newContact.name, newContact.phone, newContact.role);
+      await contactService.addContact(newContact.name, newContact.phone, newContact.role, newContact.email);
       setShowModal(false);
-      setNewContact({ name: '', phone: '', role: '' });
+      setNewContact({ name: '', phone: '', email: '', role: '' });
       loadContacts();
     } catch (e) {
       console.error(e);
@@ -60,6 +167,134 @@ export const Settings: React.FC = () => {
         <h1 className="page-title">RÉGLAGES</h1>
       </div>
 
+      {/* 1. GESTION D'ÉQUIPE & ACCÈS PARTAGÉS */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">GESTION D'ÉQUIPE & MEMBRES PARTAGÉS</h2>
+
+        {teamMsg.text && (
+          <div className={`settings-msg ${teamMsg.type}`}>
+            {teamMsg.text}
+          </div>
+        )}
+
+        {teamLoading ? (
+          <div className="team-empty">Chargement des membres de votre équipement...</div>
+        ) : ownedDevices.length > 0 ? (
+          <div>
+            {ownedDevices.map((dev) => {
+              const members = teamMembers[dev.device_id] || [];
+              return (
+                <div key={dev.id} className="team-device-block">
+                  <div className="team-device-header">
+                    <h3 className="team-device-title">{dev.name}</h3>
+                    <span className="team-device-badge">{dev.device_id}</span>
+                  </div>
+
+                  {members.length > 0 ? (
+                    <div className="team-members-list">
+                      {members.map((m) => (
+                        <div key={m.user_id} className="team-member-row">
+                          <div className="team-member-avatar">
+                            {(m.firstname ? m.firstname[0] : m.email[0]).toUpperCase()}
+                          </div>
+                          <div className="team-member-info">
+                            <span className="team-member-email">
+                              {m.firstname || m.lastname ? `${m.firstname || ''} ${m.lastname || ''} (${m.email})` : m.email}
+                            </span>
+                            <span className="team-member-date">
+                              Associé le : {m.paired_at ? new Date(m.paired_at).toLocaleDateString('fr-FR') : 'Récemment'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="team-revoke-btn"
+                            onClick={() => handleRevokeMember(dev.device_id, m.user_id, m.email)}
+                          >
+                            Révoquer l'accès
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="team-empty">
+                      Aucun membre invité sur cet appareil.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="team-empty" style={{ textAlign: 'left', padding: '14px' }}>
+            Vous n'avez aucun équipement en tant que propriétaire. Liez votre Raspberry Pi pour gérer ses accès partagés.
+          </div>
+        )}
+      </section>
+
+      {/* 2. ALERTES E-MAIL D'URGENCE AVEC PHOTO */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">ALERTES E-MAIL D'URGENCE (PHOTO SNAPSHOT)</h2>
+
+        {alertFeedbackMsg.text && (
+          <div className={`settings-msg ${alertFeedbackMsg.type}`}>
+            {alertFeedbackMsg.text}
+          </div>
+        )}
+
+        <div className="emergency-box">
+          <p className="emergency-desc">
+            Recevez un e-mail d'urgence instantané avec la <strong>photo capturée par l'IA</strong> dès qu'un départ de feu est identifié.
+          </p>
+
+          <div className="settings-row" style={{ padding: 0, border: 'none', background: 'transparent' }}>
+            <div className="settings-row-text">
+              <strong>Activer les alertes incendie par e-mail</strong>
+              <span>Envoi immédiat avec photo en pièce jointe</span>
+            </div>
+            <button
+              className={`toggle${emergencyAlertsEnabled ? ' on' : ''}`}
+              onClick={handleToggleEmergencyAlerts}
+              type="button"
+            >
+              <span className="knob" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSaveAlertSettings} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="emergency-input-group">
+              <label>Adresse e-mail à contacter en cas d'urgence</label>
+              <input
+                type="email"
+                className="emergency-input"
+                placeholder="ex: pompier@domaine.com ou contact.urgence@gmail.com"
+                value={emergencyAlertEmail}
+                onChange={(e) => setEmergencyAlertEmail(e.target.value)}
+              />
+            </div>
+
+            <div className="emergency-actions-row">
+              <button
+                type="submit"
+                className="btn emergency-save-btn"
+                disabled={savingAlertSettings}
+              >
+                {savingAlertSettings ? 'Enregistrement...' : 'Enregistrer l\'e-mail'}
+              </button>
+              <button
+                type="button"
+                className="emergency-test-btn"
+                onClick={handleTestEmergencyAlert}
+                disabled={testingAlert}
+                title="Envoie un e-mail de test à cette adresse"
+              >
+                {testingAlert ? 'Envoi en cours...' : 'Tester l\'envoi d\'alerte'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      {/* 3. SCAN AUTOMATIQUE */}
       <section className="settings-section">
         <h2 className="settings-section-title">SCAN AUTOMATIQUE</h2>
         <div className="settings-row">
@@ -88,6 +323,7 @@ export const Settings: React.FC = () => {
         </div>
       </section>
 
+      {/* 4. SENSIBILITÉ DES ALERTES */}
       <section className="settings-section">
         <h2 className="settings-section-title">SENSIBILITÉ DES ALERTES</h2>
         <div className="segmented">
@@ -103,6 +339,7 @@ export const Settings: React.FC = () => {
         </div>
       </section>
 
+      {/* 5. NOTIFICATIONS */}
       <section className="settings-section">
         <h2 className="settings-section-title">NOTIFICATIONS</h2>
         <div className="settings-row">
@@ -115,6 +352,7 @@ export const Settings: React.FC = () => {
         </div>
       </section>
 
+      {/* 6. CONTACTS D'URGENCE */}
       <section className="settings-section">
         <div className="settings-section-header">
           <h2 className="settings-section-title">CONTACTS D'URGENCE</h2>
@@ -128,7 +366,7 @@ export const Settings: React.FC = () => {
               <div className="contact-avatar">{c.name.charAt(0).toUpperCase()}</div>
               <div className="contact-info">
                 <strong>{c.name}</strong>
-                <span>{c.phone}</span>
+                <span>{c.phone} {c.email ? `• ${c.email}` : ''}</span>
               </div>
               <span className="contact-role">{c.role}</span>
               <button className="contact-delete-btn" onClick={() => handleDeleteContact(c.id)}>
@@ -162,8 +400,14 @@ export const Settings: React.FC = () => {
                 required
               />
               <input
+                type="email"
+                placeholder="Adresse e-mail (optionnel)"
+                value={newContact.email}
+                onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+              />
+              <input
                 type="text"
-                placeholder="Rôle (Ex: Voisin, Famille)"
+                placeholder="Rôle (Ex: Voisin, Pompiers, Gardien)"
                 value={newContact.role}
                 onChange={(e) => setNewContact({ ...newContact, role: e.target.value })}
                 required
@@ -181,6 +425,7 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
+      {/* 7. LANGUE */}
       <section className="settings-section">
         <h2 className="settings-section-title">LANGUE</h2>
         <button className="settings-row link-row">

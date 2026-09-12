@@ -53,3 +53,7 @@ class TwoFactorToggleRequest(BaseModel):
 
 class Disable2FARequest(BaseModel):
     code: str
+
+class EmergencyAlertSettings(BaseModel):
+    emergency_alert_email: Optional[str] = None
+    emergency_alerts_enabled: bool = True

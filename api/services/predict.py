@@ -236,6 +236,38 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                 # Notification Discord
                 alert_type_mapped = "fire" if status == "fire" else ("warn" if status == "warn" else "unknown")
                 send_discord_alert_sync(alert_type_mapped, location, confidence, image_url)
+
+                # Notification E-mail d'Urgence Incendie (avec photo snapshot jointe)
+                if status == "fire":
+                    try:
+                        from services.email import send_fire_emergency_alert_email
+                        from db.models import User, UserDevice
+                        target_users = []
+                        if user_id:
+                            u = db.query(User).filter(User.id == user_id).first()
+                            if u:
+                                target_users.append(u)
+                        if device_id:
+                            uds = db.query(UserDevice).filter(UserDevice.device_id == device_id).all()
+                            for ud in uds:
+                                if ud.user and ud.user not in target_users:
+                                    target_users.append(ud.user)
+
+                        notified_emails = set()
+                        for u in target_users:
+                            if getattr(u, "emergency_alerts_enabled", True) and getattr(u, "emergency_alert_email", None):
+                                em = u.emergency_alert_email.strip()
+                                if em and em not in notified_emails:
+                                    notified_emails.add(em)
+                                    send_fire_emergency_alert_email(
+                                        recipient=em,
+                                        device_name=location,
+                                        location=location,
+                                        confidence=confidence,
+                                        image_path=filepath
+                                    )
+                    except Exception as email_err:
+                        print(f"Erreur envoi alerte email urgence incendie: {email_err}")
             except Exception as dbe:
                 print(f"Erreur DB Capture: {dbe}")
             finally:

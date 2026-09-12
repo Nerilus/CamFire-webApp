@@ -5,7 +5,13 @@ export interface EmergencyContact {
   user_id: number;
   name: string;
   phone: string;
+  email?: string;
   role: string;
+}
+
+export interface EmergencyAlertSettings {
+  emergency_alert_email?: string | null;
+  emergency_alerts_enabled: boolean;
 }
 
 const getHeaders = () => {
@@ -22,7 +28,8 @@ const handleResponse = async (response: Response, errorMsg: string) => {
       localStorage.removeItem('token');
       window.dispatchEvent(new Event('camfire_unauthorized'));
     }
-    throw new Error(errorMsg);
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || errorMsg);
   }
   return response;
 };
@@ -37,13 +44,13 @@ export const contactService = {
     return response.json();
   },
 
-  async addContact(name: string, phone: string, role: string): Promise<EmergencyContact> {
+  async addContact(name: string, phone: string, role: string, email?: string): Promise<EmergencyContact> {
     const response = await fetch(`${API_URL}/contacts/`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ name, phone, role }),
+      body: JSON.stringify({ name, phone, role, email: email ? email.trim() : undefined }),
     });
-    await handleResponse(response, 'Erreur lors de l\'ajout du contact');
+    await handleResponse(response, "Erreur lors de l'ajout du contact");
     return response.json();
   },
 
@@ -53,5 +60,45 @@ export const contactService = {
       headers: getHeaders(),
     });
     await handleResponse(response, 'Erreur lors de la suppression du contact');
-  }
+  },
+
+  /**
+   * Récupère la configuration des alertes e-mail d'urgence avec photo
+   */
+  async getEmergencyAlertSettings(): Promise<EmergencyAlertSettings> {
+    const response = await fetch(`${API_URL}/auth/emergency-alerts`, {
+      method: 'GET',
+      headers: getHeaders(),
+    });
+    await handleResponse(response, 'Erreur lors de la récupération des réglages d\'alerte');
+    return response.json();
+  },
+
+  /**
+   * Met à jour l'e-mail d'urgence et l'activation des alertes avec photo
+   */
+  async updateEmergencyAlertSettings(email: string | null, enabled: boolean): Promise<EmergencyAlertSettings> {
+    const response = await fetch(`${API_URL}/auth/emergency-alerts`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        emergency_alert_email: email ? email.trim() : null,
+        emergency_alerts_enabled: enabled,
+      }),
+    });
+    await handleResponse(response, 'Erreur lors de l\'enregistrement des réglages');
+    return response.json();
+  },
+
+  /**
+   * Envoie immédiatement un e-mail test d'alerte incendie critique
+   */
+  async testEmergencyAlert(): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_URL}/auth/emergency-alerts/test`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    await handleResponse(response, 'Erreur lors de l\'envoi de l\'e-mail de test');
+    return response.json();
+  },
 };

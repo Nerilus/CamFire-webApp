@@ -20,6 +20,7 @@ from schemas.user_schema import (
     Resend2FARequest,
     TwoFactorToggleRequest,
     Disable2FARequest,
+    EmergencyAlertSettings,
 )
 from core.security import verify_password, get_password_hash, create_access_token
 from core.config import SECRET_KEY, ALGORITHM, OTP_EXPIRE_MINUTES, CAMERA_URL
@@ -29,6 +30,7 @@ from services.email import (
     send_device_paired_email,
     send_welcome_email,
     send_owner_secondary_registration_alert_email,
+    send_fire_emergency_alert_email,
 )
 
 router = APIRouter(
@@ -507,3 +509,50 @@ def update_user_password(password_update: PasswordUpdate, db: Session = Depends(
     current_user.hashed_password = get_password_hash(password_update.new_password)
     db.commit()
     return {"message": "Mot de passe mis à jour avec succès"}
+
+
+@router.get("/emergency-alerts", response_model=EmergencyAlertSettings)
+def get_emergency_alert_settings(current_user: User = Depends(get_current_user)):
+    """Récupère la configuration des alertes incendie par e-mail de l'utilisateur."""
+    return EmergencyAlertSettings(
+        emergency_alert_email=getattr(current_user, "emergency_alert_email", None),
+        emergency_alerts_enabled=getattr(current_user, "emergency_alerts_enabled", True)
+    )
+
+
+@router.put("/emergency-alerts", response_model=EmergencyAlertSettings)
+def update_emergency_alert_settings(
+    settings: EmergencyAlertSettings,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Met à jour l'e-mail d'urgence et l'activation des alertes incendie avec photo."""
+    current_user.emergency_alert_email = settings.emergency_alert_email.strip() if settings.emergency_alert_email else None
+    current_user.emergency_alerts_enabled = settings.emergency_alerts_enabled
+    db.commit()
+    return EmergencyAlertSettings(
+        emergency_alert_email=current_user.emergency_alert_email,
+        emergency_alerts_enabled=current_user.emergency_alerts_enabled
+    )
+
+
+@router.post("/emergency-alerts/test")
+def test_emergency_alert(
+    current_user: User = Depends(get_current_user)
+):
+    """Envoie immédiatement un e-mail de test d'alerte incendie critique pour vérifier la réception."""
+    recipient = current_user.emergency_alert_email or current_user.email
+    if not recipient:
+        raise HTTPException(status_code=400, detail="Veuillez d'abord renseigner une adresse e-mail d'urgence.")
+
+    send_fire_emergency_alert_email(
+        recipient=recipient,
+        device_name="Raspberry Pi 4 — Test CamFire",
+        location="Zone de Surveillance (Test Manuel)",
+        confidence=98.5,
+        image_path=None
+    )
+    return {
+        "status": "success",
+        "message": f"E-mail d'alerte de test envoyé avec succès à {recipient}."
+    }
