@@ -91,7 +91,7 @@ export const Carte: React.FC = () => {
   const [newSiteDesc, setNewSiteDesc] = useState('');
   const [newSiteLat, setNewSiteLat] = useState<number>(46.2276);
   const [newSiteLng, setNewSiteLng] = useState<number>(2.2137);
-  const [newSiteRadius, setNewSiteRadius] = useState<number>(500);
+  const [newSiteRadius, setNewSiteRadius] = useState<number>(300);
   const [newSiteDeviceId, setNewSiteDeviceId] = useState<number | null>(null);
   const [isSubmittingSite, setIsSubmittingSite] = useState(false);
   const [siteFormError, setSiteFormError] = useState<string | null>(null);
@@ -286,6 +286,7 @@ export const Carte: React.FC = () => {
       setIsAddModalOpen(false);
       setNewSiteName('');
       setNewSiteDesc('');
+      setNewSiteRadius(300);
     } catch (err: any) {
       setSiteFormError(err.message || "Erreur lors de la création du site.");
     } finally {
@@ -301,7 +302,7 @@ export const Carte: React.FC = () => {
         description: `Zone de surveillance principale équipée du Raspberry Pi 4 (${device.device_id})`,
         lat: device.lat || 46.2276,
         lng: device.lng || 2.2137,
-        radius: 500,
+        radius: 300,
         device_id: device.id
       };
       const created = await siteService.createSite(payload);
@@ -645,6 +646,25 @@ export const Carte: React.FC = () => {
             </Marker>
           )}
           
+          {/* Prévisualisation en direct du rayon réel sur la carte lors de la création */}
+          {isAddModalOpen && (
+            <Circle
+              center={[newSiteLat, newSiteLng]}
+              radius={newSiteRadius}
+              pathOptions={{
+                color: '#ff5500',
+                fillColor: '#ff5500',
+                fillOpacity: 0.22,
+                weight: 2,
+                dashArray: '5, 8'
+              }}
+            >
+              <Tooltip permanent direction="top" offset={[0, -10]} className="site-leaflet-tooltip">
+                <span>🎯 Cible: Rayon {newSiteRadius}m (⌀ {newSiteRadius * 2}m)</span>
+              </Tooltip>
+            </Circle>
+          )}
+
           {sites.map((site) => {
             const isSelected = site.id === selectedSiteId;
             const hasDev = Boolean(site.device_id && site.device);
@@ -656,7 +676,7 @@ export const Carte: React.FC = () => {
                 {/* Périmètre circulaire du site sur le plan */}
                 <Circle
                   center={[site.lat, site.lng]}
-                  radius={site.radius || 500}
+                  radius={site.radius || 300}
                   pathOptions={{
                     color: color,
                     fillColor: color,
@@ -815,8 +835,11 @@ export const Carte: React.FC = () => {
                 </span>
               </div>
               <div className="stat-card">
-                <span className="stat-label">Périmètre</span>
-                <span className="stat-value safe">{selectedSite.radius}m</span>
+                <span className="stat-label">Périmètre réel</span>
+                <span className="stat-value safe">{selectedSite.radius || 300}m</span>
+                <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'block' }}>
+                  ⌀ {(selectedSite.radius || 300) * 2}m · ~{((Math.PI * Math.pow(selectedSite.radius || 300, 2)) / 10000).toFixed(1)} ha
+                </span>
               </div>
               <div className="stat-card">
                 <span className="stat-label">Risque local</span>
@@ -943,9 +966,16 @@ export const Carte: React.FC = () => {
               </div>
 
               <div className="site-input-group">
-                <label className="site-input-label">Rayon de surveillance (mètres)</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label className="site-input-label" style={{ margin: 0 }}>Rayon de surveillance</label>
+                  <span className="site-radius-badge">
+                    {newSiteRadius} mètres
+                  </span>
+                </div>
+
+                {/* Boutons de sélection rapide incluant 300m */}
                 <div className="site-radius-selector">
-                  {[250, 500, 1000, 2000].map(r => (
+                  {[100, 200, 300, 500, 1000].map(r => (
                     <button
                       key={r}
                       type="button"
@@ -955,6 +985,46 @@ export const Carte: React.FC = () => {
                       {r}m
                     </button>
                   ))}
+                </div>
+
+                {/* Curseur de réglage précis */}
+                <div className="site-radius-slider-container">
+                  <input
+                    type="range"
+                    min="50"
+                    max="2000"
+                    step="25"
+                    value={newSiteRadius}
+                    onChange={(e) => setNewSiteRadius(Number(e.target.value))}
+                    className="site-radius-slider"
+                  />
+                  <div className="site-radius-slider-limits">
+                    <span>50m</span>
+                    <span className="site-radius-slider-center">Standard : 300m</span>
+                    <span>2000m</span>
+                  </div>
+                </div>
+
+                {/* Métriques réelles au sol calculées dynamiquement */}
+                <div className="site-radius-metrics-box">
+                  <div className="site-metric-item">
+                    <span className="site-metric-title">Diamètre au sol</span>
+                    <span className="site-metric-value">{newSiteRadius * 2} m</span>
+                  </div>
+                  <div className="site-metric-divider" />
+                  <div className="site-metric-item">
+                    <span className="site-metric-title">Superficie couverte</span>
+                    <span className="site-metric-value">
+                      ~{((Math.PI * Math.pow(newSiteRadius, 2)) / 10000).toFixed(1)} ha
+                    </span>
+                  </div>
+                  <div className="site-metric-divider" />
+                  <div className="site-metric-item">
+                    <span className="site-metric-title">Surface exacte</span>
+                    <span className="site-metric-value">
+                      {Math.round(Math.PI * Math.pow(newSiteRadius, 2)).toLocaleString('fr-FR')} m²
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1102,7 +1172,7 @@ export const Carte: React.FC = () => {
                       </div>
 
                       <div className="site-card-meta">
-                        {site.lat.toFixed(4)}°N, {site.lng.toFixed(4)}°E · Rayon {site.radius}m
+                        {site.lat.toFixed(4)}°N, {site.lng.toFixed(4)}°E · Rayon {site.radius || 300}m (~{((Math.PI * Math.pow(site.radius || 300, 2)) / 10000).toFixed(1)} ha)
                       </div>
 
                       <div style={{ marginTop: '4px' }}>

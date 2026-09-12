@@ -101,7 +101,7 @@ class Site(Base):
     description = Column(String, nullable=True)
     lat = Column(Float, nullable=False, default=46.2276)
     lng = Column(Float, nullable=False, default=2.2137)
-    radius = Column(Float, nullable=False, default=500.0) # Rayon de surveillance en mètres
+    radius = Column(Float, nullable=False, default=300.0) # Rayon de surveillance en mètres
     device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
