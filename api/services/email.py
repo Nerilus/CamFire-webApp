@@ -4,6 +4,7 @@ import threading
 from datetime import datetime
 from email.message import EmailMessage
 from html import escape
+from typing import Optional
 
 from core.config import (
     SMTP_FROM,
