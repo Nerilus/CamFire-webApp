@@ -5,6 +5,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 import { contactService, type EmergencyContact } from '../services/contactService';
 import { deviceService, type Device, type DeviceMember } from '../services/deviceService';
+import { DeviceLiveControls } from '../components/DeviceLiveControls';
 import './Settings.css';
 
 type Sensitivity = 'low' | 'medium' | 'high';
@@ -262,6 +263,17 @@ export const Settings: React.FC = () => {
                       Aucun membre invité sur cet appareil.
                     </div>
                   )}
+
+                  <div style={{ marginTop: '16px' }}>
+                    <DeviceLiveControls
+                      device={dev}
+                      onDeviceUpdate={(updated) => {
+                        setOwnedDevices((prev) =>
+                          prev.map((d) => (d.id === dev.id ? { ...d, ...updated } : d))
+                        );
+                      }}
+                    />
+                  </div>
                 </div>
               );
             })}

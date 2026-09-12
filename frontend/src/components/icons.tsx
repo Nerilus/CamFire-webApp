@@ -329,4 +329,55 @@ export const GpsIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({
   </svg>
 );
 
+export const MicIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+    <line x1="12" y1="19" x2="12" y2="23" />
+    <line x1="8" y1="23" x2="16" y2="23" />
+  </svg>
+);
+
+export const MicOffIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <line x1="1" y1="1" x2="23" y2="23" />
+    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+    <line x1="12" y1="19" x2="12" y2="23" />
+    <line x1="8" y1="23" x2="16" y2="23" />
+  </svg>
+);
+
+export const VolumeIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+  </svg>
+);
+
+export const VolumeXIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+    <line x1="23" y1="9" x2="17" y2="15" />
+    <line x1="17" y1="9" x2="23" y2="15" />
+  </svg>
+);
+
+export const SirenIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <path d="M7 12a5 5 0 0 1 10 0v5H7v-5z" />
+    <path d="M5 17h14v3H5z" />
+    <line x1="12" y1="3" x2="12" y2="6" />
+    <line x1="4" y1="7" x2="6" y2="9" />
+    <line x1="20" y1="7" x2="18" y2="9" />
+  </svg>
+);
+
+export const WrenchIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+  </svg>
+);
+
+
 

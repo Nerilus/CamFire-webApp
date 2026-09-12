@@ -13,6 +13,9 @@ export interface Device {
   status: 'online' | 'offline' | 'tampered';
   tamper_status?: 'normal' | 'tampered' | 'signal_lost';
   cpu_temp?: number;
+  is_maintenance_mode?: boolean;
+  maintenance_until?: string | null;
+  alarm_active?: boolean;
 }
 
 
@@ -154,6 +157,69 @@ export const deviceService = {
       // Fallback
     }
     return this.getSecureStreamUrl(deviceId);
+  },
+
+  /**
+   * Transmet un message vocal enregistré au haut-parleur du Raspberry Pi
+   */
+  async speakToDevice(deviceId: string, audioBlob: Blob): Promise<{ status: string; message: string }> {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_URL}/devices/${deviceId}/speak`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': audioBlob.type || 'audio/webm',
+      },
+      body: audioBlob,
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || "Échec de l'envoi vocal au Raspberry Pi.");
+    }
+    return response.json();
+  },
+
+  /**
+   * URL du flux audio direct pour écouter le micro du Raspberry Pi
+   */
+  getAudioStreamUrl(deviceId: string): string {
+    const token = localStorage.getItem('token');
+    return `${API_URL}/devices/${deviceId}/audio?token=${token || ''}`;
+  },
+
+  /**
+   * Déclenche ou arrête la sirène d'alarme sur le Raspberry Pi
+   */
+  async triggerAlarm(deviceId: string, action: 'start' | 'stop', durationSeconds: number = 15): Promise<{ status: string; alarm_active: boolean; message: string }> {
+    const response = await fetch(`${API_URL}/devices/${deviceId}/alarm`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ action, duration_seconds: durationSeconds }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || "Échec de la commande d'alarme.");
+    }
+    return response.json();
+  },
+
+  /**
+   * Active ou désactive le Mode Travaux (pause détection incendie pour travaux/fumées)
+   */
+  async toggleMaintenance(deviceId: string, enabled: boolean, durationHours?: number): Promise<{ status: string; is_maintenance_mode: boolean; maintenance_until?: string | null; message: string }> {
+    const response = await fetch(`${API_URL}/devices/${deviceId}/maintenance`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ enabled, duration_hours: durationHours }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || "Échec de la modification du Mode Travaux.");
+    }
+    return response.json();
   }
 };
 

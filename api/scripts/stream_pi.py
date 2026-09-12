@@ -14,6 +14,13 @@ import time
 import socket
 import argparse
 import threading
+import math
+import struct
+import wave
+import subprocess
+import shutil
+import json
+import urllib.parse
 from http import server
 import socketserver
 from picamera2 import Picamera2
@@ -22,6 +29,126 @@ from picamera2.outputs import FileOutput
 
 picam2 = None
 active_controls = {}
+is_maintenance_mode = False
+is_alarm_active = False
+alarm_stop_event = threading.Event()
+alarm_thread = None
+
+def generate_siren_wav(filename="/tmp/camfire_siren.wav", duration=2.0, sample_rate=22050):
+    """Génère une onde de sirène d'alarme ondulante (800Hz - 1600Hz) en pur Python."""
+    try:
+        n_samples = int(duration * sample_rate)
+        with wave.open(filename, 'w') as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2) # 16 bits
+            wav.setframerate(sample_rate)
+            frames = bytearray()
+            for i in range(n_samples):
+                t = i / sample_rate
+                # Fréquence modulée entre 800Hz et 1600Hz
+                freq = 1200 + 400 * math.sin(2 * math.pi * 1.5 * t)
+                phase = 2 * math.pi * freq * t
+                sample = int(30000 * math.sin(phase))
+                frames.extend(struct.pack('<h', max(-32767, min(32767, sample))))
+            wav.writeframes(frames)
+        return True
+    except Exception as e:
+        print(f"[Alarme] Erreur génération sirène: {e}")
+        return False
+
+def _alarm_worker(duration_seconds=15):
+    global is_alarm_active
+    siren_path = "/tmp/camfire_siren.wav"
+    if not os.path.exists(siren_path):
+        generate_siren_wav(siren_path)
+    
+    player = shutil.which("aplay") or shutil.which("ffplay") or shutil.which("play")
+    start_time = time.time()
+    is_alarm_active = True
+    print(f"\033[1;31m[ALARME] Sirène d'urgence DÉCLENCHÉE sur le Raspberry Pi (durée max: {duration_seconds}s)\033[0m")
+    
+    while not alarm_stop_event.is_set():
+        if duration_seconds and (time.time() - start_time) > duration_seconds:
+            break
+        if player and os.path.exists(siren_path):
+            try:
+                proc = subprocess.Popen([player, siren_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                while proc.poll() is None:
+                    if alarm_stop_event.is_set():
+                        proc.terminate()
+                        break
+                    time.sleep(0.1)
+            except Exception:
+                time.sleep(1)
+        else:
+            time.sleep(0.5)
+
+    is_alarm_active = False
+    alarm_stop_event.clear()
+    print("\033[1;32m[ALARME] Sirène arrêtée.\033[0m")
+
+def start_alarm_siren(duration_seconds=15):
+    global alarm_thread, alarm_stop_event
+    stop_alarm_siren()
+    alarm_stop_event.clear()
+    alarm_thread = threading.Thread(target=_alarm_worker, args=(duration_seconds,), daemon=True)
+    alarm_thread.start()
+
+def stop_alarm_siren():
+    global alarm_stop_event, is_alarm_active
+    alarm_stop_event.set()
+    is_alarm_active = False
+
+def play_audio_on_speaker(audio_bytes: bytes):
+    """Joue un flux audio (WebM, WAV ou MP3) reçu de l'application sur le haut-parleur du Pi."""
+    def _worker():
+        try:
+            ext = ".wav" if audio_bytes.startswith(b"RIFF") else ".webm"
+            temp_path = f"/tmp/camfire_speak_{int(time.time()*1000)}{ext}"
+            with open(temp_path, "wb") as f:
+                f.write(audio_bytes)
+            
+            ffplay = shutil.which("ffplay")
+            aplay = shutil.which("aplay")
+            mpv = shutil.which("mpv")
+            ffmpeg = shutil.which("ffmpeg")
+
+            if ext == ".webm" and ffplay:
+                subprocess.run([ffplay, "-nodisp", "-autoexit", "-loglevel", "quiet", temp_path], timeout=30)
+            elif ext == ".webm" and mpv:
+                subprocess.run([mpv, "--no-video", temp_path], timeout=30)
+            elif ext == ".wav" and aplay:
+                subprocess.run([aplay, "-q", temp_path], timeout=30)
+            elif aplay and ext == ".webm" and ffmpeg:
+                wav_tmp = temp_path + ".wav"
+                subprocess.run([ffmpeg, "-y", "-i", temp_path, wav_tmp], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if os.path.exists(wav_tmp):
+                    subprocess.run([aplay, "-q", wav_tmp], timeout=30)
+                    try: os.remove(wav_tmp)
+                    except Exception: pass
+            elif ffplay:
+                subprocess.run([ffplay, "-nodisp", "-autoexit", "-loglevel", "quiet", temp_path], timeout=30)
+
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+            print(f"[AUDIO INTERPHONE] Voix diffusée avec succès sur le haut-parleur ({len(audio_bytes)} octets).")
+        except Exception as e:
+            print(f"[AUDIO INTERPHONE] Erreur diffusion haut-parleur: {e}")
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+def has_microphone() -> bool:
+    """Vérifie si un microphone d'entrée ALSA est connecté au Raspberry Pi."""
+    try:
+        arecord = shutil.which("arecord")
+        if not arecord:
+            return False
+        res = subprocess.run([arecord, "-l"], capture_output=True, text=True)
+        return "card" in res.stdout.lower()
+    except Exception:
+        return False
 
 class StreamingOutput(io.BufferedIOBase):
     def __init__(self):
@@ -35,16 +162,28 @@ class StreamingOutput(io.BufferedIOBase):
                 self.condition.notify_all()
 
 class StreamingHandler(server.BaseHTTPRequestHandler):
+    def _send_cors_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Range')
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._send_cors_headers()
+        self.end_headers()
+
     def do_HEAD(self):
         if self.path in ('/', '/stream.mjpg'):
             self.send_response(200)
+            self._send_cors_headers()
             self.send_header('Age', '0')
             self.send_header('Cache-Control', 'no-cache, private')
             self.send_header('Pragma', 'no-cache')
             self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
             self.end_headers()
-        elif self.path.startswith('/control'):
+        elif self.path.startswith('/control') or self.path.startswith('/status'):
             self.send_response(200)
+            self._send_cors_headers()
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
         else:
@@ -52,14 +191,53 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_GET(self):
-        global picam2, active_controls
+        global picam2, active_controls, is_maintenance_mode, is_alarm_active
         if self.path == '/':
             self.send_response(301)
             self.send_header('Location', '/stream.mjpg')
             self.end_headers()
+        elif self.path.startswith('/status'):
+            resp = json.dumps({
+                "status": "ok",
+                "alarm_active": is_alarm_active,
+                "is_maintenance_mode": is_maintenance_mode,
+                "has_mic": has_microphone(),
+                "has_speaker": True
+            }).encode('utf-8')
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+        elif self.path.startswith('/audio'):
+            # Écoute en direct du micro du Raspberry Pi
+            arecord = shutil.which("arecord")
+            if not arecord or not has_microphone():
+                self.send_error(503, "Aucun microphone USB détecté sur le Raspberry Pi.")
+                return
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header('Content-Type', 'audio/wav')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            try:
+                # 22.05 kHz, 16-bit mono WAV stream
+                proc = subprocess.Popen(
+                    [arecord, "-q", "-t", "wav", "-r", "22050", "-c", "1", "-f", "S16_LE"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL
+                )
+                while True:
+                    data = proc.stdout.read(1024)
+                    if not data:
+                        break
+                    self.wfile.write(data)
+                    self.wfile.flush()
+            except Exception:
+                try: proc.terminate()
+                except Exception: pass
         elif self.path.startswith('/control'):
-            import urllib.parse
-            import json
             parsed = urllib.parse.urlparse(self.path)
             params = urllib.parse.parse_qs(parsed.query)
             updates = {}
@@ -103,12 +281,14 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             }).encode('utf-8')
 
             self.send_response(200)
+            self._send_cors_headers()
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(resp_data)))
             self.end_headers()
             self.wfile.write(resp_data)
         elif self.path == '/stream.mjpg':
             self.send_response(200)
+            self._send_cors_headers()
             self.send_header('Age', '0')
             self.send_header('Cache-Control', 'no-cache, private')
             self.send_header('Pragma', 'no-cache')
@@ -128,6 +308,73 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
                     self.wfile.flush()
             except Exception:
                 pass
+        else:
+            self.send_error(404)
+            self.end_headers()
+
+    def do_POST(self):
+        global is_maintenance_mode, is_alarm_active
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        params = urllib.parse.parse_qs(parsed.query)
+
+        if path == '/speak':
+            # Réception du message vocal de l'application et diffusion haut-parleur
+            length = int(self.headers.get('Content-Length', 0))
+            if length > 0:
+                audio_bytes = self.rfile.read(length)
+                play_audio_on_speaker(audio_bytes)
+                resp = json.dumps({"status": "playing", "bytes": len(audio_bytes)}).encode('utf-8')
+            else:
+                resp = json.dumps({"status": "empty"}).encode('utf-8')
+
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        elif path == '/alarm':
+            # Déclenchement ou arrêt de la sirène d'alarme
+            action = params.get('action', ['start'])[0]
+            duration = int(params.get('duration', [15])[0])
+
+            if action == 'start':
+                start_alarm_siren(duration_seconds=duration)
+            else:
+                stop_alarm_siren()
+
+            resp = json.dumps({
+                "status": "ok",
+                "action": action,
+                "alarm_active": is_alarm_active
+            }).encode('utf-8')
+
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        elif path == '/maintenance':
+            # Activation / désactivation du mode travaux
+            enabled_str = params.get('enabled', ['true'])[0].lower()
+            is_maintenance_mode = enabled_str in ('true', '1', 'yes')
+            print(f"[MODE TRAVAUX] {'ACTIVÉ' if is_maintenance_mode else 'DÉSACTIVÉ'} sur le Raspberry Pi.")
+
+            resp = json.dumps({
+                "status": "ok",
+                "is_maintenance_mode": is_maintenance_mode
+            }).encode('utf-8')
+
+            self.send_response(200)
+            self._send_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
         else:
             self.send_error(404)
             self.end_headers()

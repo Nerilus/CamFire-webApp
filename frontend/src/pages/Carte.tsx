@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Circle, Tooltip, useMap, useMapEvents 
 import L from 'leaflet';
 import { FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, FlashIcon, TrashIcon, GpsIcon } from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
+import { DeviceLiveControls } from '../components/DeviceLiveControls';
 import { fetchZonesWeather } from '../services/weatherService';
 import { deviceService, type Device } from '../services/deviceService';
 import { siteService, type Site, type SiteCreateInput } from '../services/siteService';
@@ -826,6 +827,24 @@ export const Carte: React.FC = () => {
               )}
             </div>
 
+            {/* Commandes Temps Réel & Interphone (Push-to-Talk, Micro, Alarme, Mode Travaux) */}
+            {selectedSite.device && (
+              <div style={{ marginTop: '12px', marginBottom: '14px' }}>
+                <DeviceLiveControls
+                  device={selectedSite.device}
+                  onDeviceUpdate={(updated) => {
+                    setSites((prev) =>
+                      prev.map((s) =>
+                        s.id === selectedSite.id && s.device
+                          ? { ...s, device: { ...s.device, ...updated } }
+                          : s
+                      )
+                    );
+                  }}
+                />
+              </div>
+            )}
+
             {/* Statistiques et Météo du site */}
             <div className="panel-stats">
               <div className="stat-card">
@@ -1276,6 +1295,16 @@ export const Carte: React.FC = () => {
           streamUrl={deviceService.getSecureStreamUrl(selectedSite.device.device_id)}
           cameraName={`${selectedSite.name} · ${selectedSite.device.name}`}
           statusText="Surveillance IA continue YOLOv8 & v11"
+          device={selectedSite.device}
+          onDeviceUpdate={(updated) => {
+            setSites((prev) =>
+              prev.map((s) =>
+                s.id === selectedSite.id && s.device
+                  ? { ...s, device: { ...s.device, ...updated } }
+                  : s
+              )
+            );
+          }}
         />
       )}
     </div>

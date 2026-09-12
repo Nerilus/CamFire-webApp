@@ -145,6 +145,12 @@
   gap: 6px;
 }
 
+.video-modal-controls-wrap {
+  padding: 12px 18px;
+  background: rgba(10, 15, 24, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

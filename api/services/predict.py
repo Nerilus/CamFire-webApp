@@ -220,6 +220,24 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                 )
                 db.add(capture)
 
+                # Vérification du Mode Travaux (désactivation temporaire pour travaux/fumées de bricolage)
+                from db.models import Device
+                dev_obj = None
+                if device_id:
+                    dev_obj = db.query(Device).filter(Device.id == device_id).first()
+                if not dev_obj and location:
+                    dev_obj = db.query(Device).filter(Device.name == location).first()
+
+                if dev_obj and getattr(dev_obj, "is_maintenance_mode", False):
+                    # Vérification d'expiration automatique
+                    if dev_obj.maintenance_until and now_dt > dev_obj.maintenance_until:
+                        dev_obj.is_maintenance_mode = False
+                        dev_obj.maintenance_until = None
+                        db.commit()
+                    else:
+                        print(f"[MODE TRAVAUX ACTIF] Détection {status.upper()} ignorée pour {location} — Alertes et emails suspendus.")
+                        return
+
                 alert = Alert(
                     status=status,
                     location=location,
