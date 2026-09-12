@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Circle, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, FlashIcon, TrashIcon } from '../components/icons';
+import { FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, FlashIcon, TrashIcon, GpsIcon } from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
 import { fetchZonesWeather } from '../services/weatherService';
 import { deviceService, type Device } from '../services/deviceService';
@@ -37,10 +37,25 @@ const createSiteIcon = (hasDevice: boolean, status: 'safe' | 'warn' | 'fire', is
   });
 };
 
+// Marqueur de position de l'utilisateur (GPS)
+const createUserLocationIcon = () => {
+  return L.divIcon({
+    className: 'custom-leaflet-user-icon',
+    html: `
+      <div style="position: relative; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;">
+        <div style="position: absolute; top: 0; left: 0; width: 28px; height: 28px; border-radius: 50%; background: rgba(59, 130, 246, 0.4); animation: pulse-ring 1.5s infinite;"></div>
+        <div style="width: 14px; height: 14px; border-radius: 50%; background: #2563eb; border: 2.5px solid #ffffff; box-shadow: 0 0 12px rgba(37, 99, 235, 0.9); position: relative; z-index: 2;"></div>
+      </div>
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+};
+
 const MapController = ({ center }: { center: [number, number] }) => {
   const map = useMap();
   useEffect(() => {
-    map.flyTo(center, 12, { duration: 1.5 });
+    map.flyTo(center, 13, { duration: 1.4 });
   }, [center, map]);
   return null;
 };
@@ -80,6 +95,60 @@ export const Carte: React.FC = () => {
   const [newSiteDeviceId, setNewSiteDeviceId] = useState<number | null>(null);
   const [isSubmittingSite, setIsSubmittingSite] = useState(false);
   const [siteFormError, setSiteFormError] = useState<string | null>(null);
+
+  // Géolocalisation GPS (Téléphone / Ordinateur)
+  const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsSuccess, setGpsSuccess] = useState(false);
+
+  // Localisation GPS de l'appareil (Téléphone ou Ordinateur)
+  const handleLocateUser = (forNewSite: boolean = false) => {
+    if (!navigator.geolocation) {
+      setGpsError("La géolocalisation GPS n'est pas supportée par votre navigateur.");
+      return;
+    }
+
+    setIsLocating(true);
+    setGpsError(null);
+    setGpsSuccess(false);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = parseFloat(position.coords.latitude.toFixed(5));
+        const lng = parseFloat(position.coords.longitude.toFixed(5));
+        const acc = Math.round(position.coords.accuracy);
+
+        setUserPosition([lat, lng]);
+        setGpsAccuracy(acc);
+        setGpsSuccess(true);
+        setIsLocating(false);
+
+        if (forNewSite || isAddModalOpen) {
+          setNewSiteLat(lat);
+          setNewSiteLng(lng);
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        let msg = "Impossible d'obtenir votre position GPS.";
+        if (error.code === error.PERMISSION_DENIED) {
+          msg = "Autorisation GPS refusée. Veuillez autoriser la géolocalisation dans les réglages de votre navigateur.";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          msg = "Signal GPS indisponible. Vérifiez que la localisation est activée sur votre appareil.";
+        } else if (error.code === error.TIMEOUT) {
+          msg = "Délai de géolocalisation dépassé. Veuillez réessayer.";
+        }
+        setGpsError(msg);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0
+      }
+    );
+  };
 
   // Sélecteur d'appareil pour association rapide
   const [selectedDeviceIdToAssign, setSelectedDeviceIdToAssign] = useState<number | ''>('');
@@ -312,8 +381,16 @@ export const Carte: React.FC = () => {
 
           <button
             onClick={() => {
-              setNewSiteLat(46.2276);
-              setNewSiteLng(2.2137);
+              if (userPosition) {
+                setNewSiteLat(userPosition[0]);
+                setNewSiteLng(userPosition[1]);
+                setGpsSuccess(true);
+              } else {
+                setNewSiteLat(46.2276);
+                setNewSiteLng(2.2137);
+                setGpsSuccess(false);
+              }
+              setGpsError(null);
               setIsAddModalOpen(true);
             }}
             style={{
@@ -368,8 +445,16 @@ export const Carte: React.FC = () => {
           <button
             className="site-chip add-chip"
             onClick={() => {
-              setNewSiteLat(46.2276);
-              setNewSiteLng(2.2137);
+              if (userPosition) {
+                setNewSiteLat(userPosition[0]);
+                setNewSiteLng(userPosition[1]);
+                setGpsSuccess(true);
+              } else {
+                setNewSiteLat(46.2276);
+                setNewSiteLng(2.2137);
+                setGpsSuccess(false);
+              }
+              setGpsError(null);
               setIsAddModalOpen(true);
             }}
           >
@@ -454,7 +539,19 @@ export const Carte: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => setIsAddModalOpen(true)}
+                onClick={() => {
+                  if (userPosition) {
+                    setNewSiteLat(userPosition[0]);
+                    setNewSiteLng(userPosition[1]);
+                    setGpsSuccess(true);
+                  } else {
+                    setNewSiteLat(46.2276);
+                    setNewSiteLng(2.2137);
+                    setGpsSuccess(false);
+                  }
+                  setGpsError(null);
+                  setIsAddModalOpen(true);
+                }}
                 style={{
                   background: 'linear-gradient(135deg, #ff3300 0%, #ff5500 100%)',
                   color: '#fff',
@@ -473,9 +570,20 @@ export const Carte: React.FC = () => {
           </div>
         )}
 
+        {/* Bouton Flottant GPS sur la Carte */}
+        <button
+          type="button"
+          className={`map-floating-gps-btn ${isLocating ? 'locating' : ''}`}
+          onClick={() => handleLocateUser(false)}
+          title="Centrer la carte sur ma position GPS (Téléphone / PC)"
+        >
+          <GpsIcon size={16} className={isLocating ? 'spinning' : ''} />
+          <span>{isLocating ? 'Recherche GPS...' : 'Ma position'}</span>
+        </button>
+
         <MapContainer 
-          center={selectedSite ? [selectedSite.lat, selectedSite.lng] : [46.2276, 2.2137]} 
-          zoom={selectedSite ? 13 : 6} 
+          center={selectedSite ? [selectedSite.lat, selectedSite.lng] : userPosition || [46.2276, 2.2137]} 
+          zoom={selectedSite || userPosition ? 13 : 6} 
           style={{ width: '100%', height: '100%', background: '#1a1a1a', borderRadius: '16px' }}
           zoomControl={false}
           attributionControl={false}
@@ -484,7 +592,20 @@ export const Carte: React.FC = () => {
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
           <MapClickHandler onMapClick={handleMapClick} />
-          {selectedSite && <MapController center={[selectedSite.lat, selectedSite.lng]} />}
+          {selectedSite ? (
+            <MapController center={[selectedSite.lat, selectedSite.lng]} />
+          ) : userPosition ? (
+            <MapController center={userPosition} />
+          ) : null}
+
+          {/* Marqueur de la position de l'utilisateur (GPS) */}
+          {userPosition && (
+            <Marker position={userPosition} icon={createUserLocationIcon()}>
+              <Tooltip permanent direction="top" offset={[0, -14]} className="site-leaflet-tooltip user-position-tooltip">
+                <span>📍 Ma position GPS</span>
+              </Tooltip>
+            </Marker>
+          )}
           
           {sites.map((site) => {
             const isSelected = site.id === selectedSiteId;
@@ -733,6 +854,29 @@ export const Carte: React.FC = () => {
                   value={newSiteDesc}
                   onChange={(e) => setNewSiteDesc(e.target.value)}
                 />
+              </div>
+
+              {/* Utilisation de la position GPS du téléphone ou de l'ordinateur */}
+              <div className="gps-locate-box">
+                <button
+                  type="button"
+                  className={`gps-locate-btn ${isLocating ? 'locating' : ''}`}
+                  onClick={() => handleLocateUser(true)}
+                  disabled={isLocating}
+                >
+                  <GpsIcon size={17} className={isLocating ? 'spinning' : ''} />
+                  <span>{isLocating ? 'Acquisition du signal GPS...' : '📍 Utiliser ma position GPS (Téléphone / PC)'}</span>
+                </button>
+                {gpsSuccess && gpsAccuracy !== null && (
+                  <div className="gps-status-badge success">
+                    ✓ Position GPS appliquée : {newSiteLat.toFixed(5)}, {newSiteLng.toFixed(5)} (Précision : ±{gpsAccuracy}m)
+                  </div>
+                )}
+                {gpsError && (
+                  <div className="gps-status-badge error">
+                    ⚠️ {gpsError}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', gap: '10px' }}>
