@@ -23,6 +23,7 @@ import json
 import urllib.parse
 from http import server
 import socketserver
+from typing import Optional
 from picamera2 import Picamera2
 from picamera2.encoders import JpegEncoder
 from picamera2.outputs import FileOutput
@@ -56,7 +57,7 @@ def generate_siren_wav(filename="/tmp/camfire_siren.wav", duration=2.0, sample_r
         print(f"[Alarme] Erreur génération sirène: {e}")
         return False
 
-def get_audio_output_dev() -> Optional[str]:
+def get_audio_output_dev():
     """Débloque le volume à 100% et renvoie le périphérique Jack Headphones."""
     try:
         for cmd in [
