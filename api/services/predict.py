@@ -10,6 +10,7 @@ import numpy as np
 import cv2
 import torch
 from PIL import Image
+from typing import Optional
 from ultralytics import YOLO
 from ultralytics.nn.tasks import DetectionModel
 from services.discord import send_discord_alert_sync
@@ -446,7 +447,7 @@ def _ensure_ai_worker():
         t.start()
         _ai_thread_started = True
 
-def generate_video_stream(camera_url: str):
+def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
     global _current_raw_frame
     if _model is None:
         print("Modèle non chargé, impossible de traiter la vidéo.")
@@ -454,25 +455,26 @@ def generate_video_stream(camera_url: str):
 
     _ensure_ai_worker()
 
-    # Normalisation du protocole pour OpenCV / FFmpeg (ex: syntaxe VLC tcp/h264:// -> tcp://)
-    if camera_url and camera_url.startswith("tcp/h264://"):
-        camera_url = "tcp://" + camera_url[len("tcp/h264://"):]
-
-    # Si l'URL HTTP pointe vers la racine d'un serveur caméra (ex: :8080), basculer vers stream.mjpg
-    if camera_url and (camera_url.startswith("http://") or camera_url.startswith("https://")):
-        if camera_url.rstrip("/").endswith(":8080"):
-            camera_url = camera_url.rstrip("/") + "/stream.mjpg"
-
     while True:
+        # Normalisation du protocole pour OpenCV / FFmpeg (ex: syntaxe VLC tcp/h264:// -> tcp://)
+        current_url = camera_url
+        if current_url and current_url.startswith("tcp/h264://"):
+            current_url = "tcp://" + current_url[len("tcp/h264://"):]
+
+        # Si l'URL HTTP pointe vers la racine d'un serveur caméra (ex: :8080), basculer vers stream.mjpg
+        if current_url and (current_url.startswith("http://") or current_url.startswith("https://")):
+            if current_url.rstrip("/").endswith(":8080"):
+                current_url = current_url.rstrip("/") + "/stream.mjpg"
+
         cap = None
         try:
-            print(f"Tentative de connexion au flux {camera_url} avec OpenCV...")
-            cap = cv2.VideoCapture(camera_url)
-            if not cap.isOpened() and (camera_url.startswith("http://") or camera_url.startswith("https://")) and not camera_url.endswith(".mjpg"):
-                alt_url = camera_url.rstrip("/") + "/stream.mjpg"
+            print(f"Tentative de connexion au flux {current_url} avec OpenCV...")
+            cap = cv2.VideoCapture(current_url)
+            if not cap.isOpened() and (current_url.startswith("http://") or current_url.startswith("https://")) and not current_url.endswith(".mjpg"):
+                alt_url = current_url.rstrip("/") + "/stream.mjpg"
                 cap = cv2.VideoCapture(alt_url)
                 if cap.isOpened():
-                    camera_url = alt_url
+                    current_url = alt_url
             if not cap.isOpened():
                 raise Exception("Flux indisponible (connexion impossible)")
 
@@ -512,6 +514,18 @@ def generate_video_stream(camera_url: str):
                            frame_bytes + b'\r\n')
 
         except Exception as e:
+            if device_id:
+                try:
+                    from db.database import SessionLocal
+                    from db.models import Device
+                    with SessionLocal() as db_session:
+                        dev = db_session.query(Device).filter(Device.device_id == device_id.strip()).first()
+                        if dev and dev.stream_url and dev.stream_url != camera_url:
+                            print(f"[Stream] Rafraîchissement automatique de l'URL pour {device_id}: {dev.stream_url}")
+                            camera_url = dev.stream_url
+                except Exception:
+                    pass
+
             error_img = np.zeros((480, 640, 3), dtype=np.uint8)
             cv2.putText(error_img, "CAMFIRE - EN ATTENTE DU FLUX", (40, 180), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 165, 255), 2, cv2.LINE_AA)

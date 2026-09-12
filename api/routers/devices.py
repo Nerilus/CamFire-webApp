@@ -704,7 +704,7 @@ def stream_device(
         )
 
     return StreamingResponse(
-        generate_video_stream(device.stream_url),
+        generate_video_stream(device.stream_url, device_id=device.device_id),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 

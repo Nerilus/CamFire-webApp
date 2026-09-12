@@ -3,9 +3,9 @@
 CamFire IoT Agent - Script de Provisioning, Télémétrie et Supervision Matérielle pour Raspberry Pi 4
 Ce script s'exécute sur le Raspberry Pi pour :
 1. Détecter l'identifiant matériel unique du Raspberry Pi
-2. Détecter l'URL du flux vidéo (Cloudflare Tunnel ou IP locale)
-3. Synchroniser la configuration avec le serveur CamFire
-4. Émettre un Heartbeat cryptographique toutes les 15 secondes (Dead Man's Switch)
+2. Démarrer et superviser automatiquement le tunnel Cloudflare (quick tunnel)
+3. Synchroniser la configuration et le flux vidéo avec le serveur CamFire
+4. Émettre un Heartbeat cryptographique toutes les 15 secondes (Dead Man's Switch & auto-guérison)
 """
 
 import os
@@ -22,6 +22,9 @@ import argparse
 import urllib.request
 import urllib.error
 import ssl
+import subprocess
+import shutil
+from typing import Optional
 
 ssl_context = ssl._create_unverified_context()
 
@@ -67,8 +70,112 @@ def get_local_ip() -> str:
     except Exception:
         return "127.0.0.1"
 
+def is_tunnel_alive(url: str) -> bool:
+    """Vérifie si le tunnel vidéo répond effectivement."""
+    if not url or "trycloudflare.com" not in url:
+        return False
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "CamFire-Agent/1.0"})
+        with urllib.request.urlopen(req, timeout=4, context=ssl_context) as resp:
+            return True
+    except urllib.error.HTTPError:
+        return True
+    except Exception:
+        return False
+
+def is_cloudflared_running() -> bool:
+    """Vérifie si le processus cloudflared est en cours d'exécution."""
+    try:
+        res = subprocess.run(["pgrep", "-f", "cloudflared"], capture_output=True, text=True)
+        return res.returncode == 0 and len(res.stdout.strip()) > 0
+    except Exception:
+        return False
+
+def ensure_cloudflared_tunnel(local_port: int = 8080) -> Optional[str]:
+    """
+    Démarre et supervise automatiquement le tunnel Cloudflare pour exposer la caméra.
+    Récupère l'URL *.trycloudflare.com dynamique et s'assure qu'elle est active.
+    """
+    cloudflared_bin = shutil.which("cloudflared")
+    if not cloudflared_bin:
+        for p in ["/usr/local/bin/cloudflared", "/usr/bin/cloudflared", "/opt/cloudflared/cloudflared"]:
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                cloudflared_bin = p
+                break
+
+    if not cloudflared_bin:
+        return None
+
+    log_path = "/tmp/cloudflared.log"
+
+    # 1. Si un tunnel est déjà en cours et qu'il répond, on le conserve
+    if is_cloudflared_running() and os.path.exists(log_path):
+        try:
+            with open(log_path, "r", errors="ignore") as f:
+                content = f.read()
+            matches = re.findall(r"https://([a-zA-Z0-9-]+)\.trycloudflare\.com", content)
+            valid = [m for m in matches if m not in ("api", "www")]
+            if valid:
+                candidate = f"https://{valid[-1]}.trycloudflare.com/stream.mjpg"
+                if is_tunnel_alive(candidate):
+                    return candidate
+        except Exception:
+            pass
+
+    # 2. Sinon, tuer les processus résiduels et relancer proprement
+    print("    • [Tunnel] Lancement automatique du tunnel Cloudflare vers le port 8080...")
+    try:
+        subprocess.run(["pkill", "-9", "-f", "cloudflared"], capture_output=True)
+        time.sleep(1)
+    except Exception:
+        pass
+
+    try:
+        log_file = open(log_path, "w")
+    except Exception:
+        log_file = subprocess.DEVNULL
+
+    cmd = [cloudflared_bin, "tunnel", "--url", f"http://127.0.0.1:{local_port}"]
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True
+        )
+    except Exception as e:
+        print(f"    • [Tunnel] Impossible de démarrer cloudflared: {e}")
+        return None
+
+    # 3. Attendre l'URL trycloudflare.com (jusqu'à 15 secondes)
+    for _ in range(30):
+        time.sleep(0.5)
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, "r", errors="ignore") as f:
+                    content = f.read()
+                matches = re.findall(r"https://([a-zA-Z0-9-]+)\.trycloudflare\.com", content)
+                valid = [m for m in matches if m not in ("api", "www")]
+                if valid:
+                    detected_url = f"https://{valid[-1]}.trycloudflare.com/stream.mjpg"
+                    print(f"    • [Tunnel] Tunnel établi : \033[1;32m{detected_url}\033[0m")
+                    # Attente brève de propagation DNS Cloudflare
+                    for _ in range(6):
+                        if is_tunnel_alive(detected_url):
+                            return detected_url
+                        time.sleep(1)
+                    return detected_url
+            except Exception:
+                pass
+
+    print("    • [Tunnel] Délai d'attente dépassé pour la détection de l'URL Cloudflare.")
+    return None
+
+_cached_tunnel_url = None
+
 def detect_stream_url(manual_url: str = None) -> str:
     """Détecte l'URL de streaming externe (Cloudflare Tunnel) ou locale."""
+    global _cached_tunnel_url
     if manual_url and manual_url.strip():
         u = manual_url.strip()
         if not u.endswith(".mjpg") and not u.endswith("/"):
@@ -82,30 +189,16 @@ def detect_stream_url(manual_url: str = None) -> str:
             u += "/stream.mjpg"
         return u
 
-    # Analyse des logs de cloudflared
-    for log_path in ["/tmp/cloudflared.log", "/var/log/cloudflared.log", "cloudflared.log"]:
-        if os.path.exists(log_path):
-            try:
-                with open(log_path, "r", errors="ignore") as f:
-                    content = f.read()
-                    matches = re.findall(r"https://([a-zA-Z0-9-]+)\.trycloudflare\.com", content)
-                    valid = [f"https://{m}.trycloudflare.com/stream.mjpg" for m in matches if m not in ("api", "www")]
-                    if valid:
-                        return valid[-1]
-            except Exception:
-                pass
+    # Détection / démarrage automatique de Cloudflare Tunnel
+    tunnel_url = ensure_cloudflared_tunnel(local_port=8080)
+    if tunnel_url:
+        _cached_tunnel_url = tunnel_url
+        return tunnel_url
 
-    # Fichier de configuration local
-    if os.path.exists("camfire_device.json"):
-        try:
-            with open("camfire_device.json", "r") as f:
-                data = json.load(f)
-                saved_url = data.get("stream_url")
-                if saved_url and "trycloudflare.com" in saved_url and "api.cloudflare" not in saved_url:
-                    return saved_url
-        except Exception:
-            pass
+    if _cached_tunnel_url and is_tunnel_alive(_cached_tunnel_url):
+        return _cached_tunnel_url
 
+    # Fallback IP locale
     ip = get_local_ip()
     return f"http://{ip}:8080/stream.mjpg"
 
@@ -147,18 +240,25 @@ def send_heartbeat(hw_id: str, server_url: str, provision_key: str, stream_url: 
     try:
         with urllib.request.urlopen(req, timeout=5, context=ssl_context) as resp:
             return resp.status == 200
-    except Exception as e:
+    except Exception:
         return False
 
 def heartbeat_worker_loop(hw_id: str, server_url: str, provision_key: str, get_stream_fn):
     """Boucle perpétuelle d'émission du Dead Man's Switch (toutes les 15s)."""
+    current_stream = get_stream_fn()
     while True:
-        stream_u = get_stream_fn()
+        # Auto-guérison si le tunnel Cloudflare a été coupé ou a expiré
+        if "trycloudflare.com" in current_stream and not is_tunnel_alive(current_stream):
+            print("\033[1;33m[Avertissement] Le tunnel Cloudflare ne répond plus. Relance automatique...\033[0m")
+            new_stream = get_stream_fn()
+            if new_stream:
+                current_stream = new_stream
+
         temp = get_cpu_temperature()
-        ok = send_heartbeat(hw_id, server_url, provision_key, stream_u)
+        ok = send_heartbeat(hw_id, server_url, provision_key, current_stream)
         status_msg = "\033[1;32mEN LIGNE (200 OK)\033[0m" if ok else "\033[1;31mÉCHEC TRANSMISSION\033[0m"
         now_str = time.strftime("%H:%M:%S")
-        print(f"[{now_str}] Heartbeat -> {server_url} | {status_msg} | CPU: {temp}°C | Flux: {stream_u}")
+        print(f"[{now_str}] Heartbeat -> {server_url} | {status_msg} | CPU: {temp}°C | Flux: {current_stream}")
         time.sleep(15)
 
 def main():
@@ -172,14 +272,15 @@ def main():
 
     hw_id = get_hardware_serial()
     ip = get_local_ip()
-    stream_url = detect_stream_url(args.tunnel_url)
 
-    print(f"\n[1] Diagnostic Matériel & Réseau :")
+    print(f"\n[1] Diagnostic Matériel & Initialisation Réseau :")
     print(f"    • ID Matériel Unique (Device ID) : \033[1;32m{hw_id}\033[0m")
     print(f"    • IP Locale Raspberry Pi         : {ip}")
     print(f"    • Température Processeur BCM2711 : {get_cpu_temperature()}°C")
     print(f"    • Serveur Cible CamFire          : \033[1;34m{args.server}\033[0m")
-    print(f"    • Flux Vidéo Détecté             : \033[1;36m{stream_url}\033[0m")
+
+    stream_url = detect_stream_url(args.tunnel_url)
+    print(f"    • Flux Vidéo Sélectionné         : \033[1;36m{stream_url}\033[0m")
 
     # Lecture ou création du code d'appairage local
     config_file = "camfire_device.json"
@@ -231,7 +332,7 @@ def main():
     # Démarrage de la boucle active Dead Man's Switch
     print(f"\n[3] Surveillance Continue Active (Dead Man's Switch) :")
     print("    • Émission de battements sécurisés toutes les 15 secondes...")
-    print("    • Maintenez ce terminal ouvert ou lancez-le en service systemd.")
+    print("    • Supervision et auto-guérison du flux vidéo actives.")
     print("    • Appuyez sur Ctrl+C pour interrompre l'agent.\n")
 
     try:
