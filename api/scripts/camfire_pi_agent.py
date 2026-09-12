@@ -118,7 +118,7 @@ def ensure_local_camera_stream(port: int = 8080, fps: int = 30) -> bool:
     except Exception:
         f_log = subprocess.DEVNULL
 
-    cmd = [sys.executable, script_path, "--fps", str(fps), "--noir", "--port", str(port)]
+    cmd = [sys.executable, script_path, "--fps", str(fps), "--noir", "--red-gain", "0.70", "--blue-gain", "1.35", "--port", str(port)]
     try:
         subprocess.Popen(
             cmd,
