@@ -17,7 +17,7 @@ class SiteBase(BaseModel):
     description: Optional[str] = Field(None, description="Description du site ou de la parcelle")
     lat: float = Field(..., description="Latitude géographique")
     lng: float = Field(..., description="Longitude géographique")
-    radius: float = Field(500.0, ge=50, le=50000, description="Rayon de couverture en mètres")
+    radius: float = Field(300.0, ge=50, le=50000, description="Rayon de couverture en mètres")
     device_id: Optional[Union[int, str]] = Field(None, description="Identifiant numérique ou code matériel du Raspberry Pi associé")
 
 class SiteCreate(SiteBase):
