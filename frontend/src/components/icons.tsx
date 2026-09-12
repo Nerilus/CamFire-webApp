@@ -74,6 +74,15 @@ export const MapIcon: React.FC<IconProps> = ({ size, className }) => (
   </svg>
 );
 
+export const CalendarIcon: React.FC<IconProps> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
 export const FlashIcon: React.FC<IconProps> = ({ size, className }) => (
   <svg {...base(size)} className={className} fill="currentColor" stroke="none">
     <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />

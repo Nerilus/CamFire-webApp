@@ -11,6 +11,8 @@ export interface AlertRecord {
   coords?: string;
   image_url?: string | null;
   detection_type?: string;
+  rawDate?: string;
+  formattedTime?: string;
 }
 
 interface Props {
