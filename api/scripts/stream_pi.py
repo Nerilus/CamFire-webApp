@@ -4,7 +4,7 @@ CamFire - Stream Caméra Picamera2 Haute Performance & Zéro Latence
 Optimisations :
 1. Compression JPEG calibrée (q=65) pour un débit ultra-léger (< 12 Ko/frame) et fluide
 2. Framerate configurable jusqu'à 30 - 35 FPS
-3. Prise en charge du profil de couleur NoIR (anti-teinte rose en journée)
+3. Prise en charge du profil de couleur NoIR via LIBCAMERA_RPI_TUNING_FILE
 4. TCP_NODELAY et wfile.flush() pour éliminer toute latence réseau
 """
 
@@ -81,7 +81,7 @@ def main():
     parser.add_argument("--port", type=int, default=8080, help="Port d'écoute HTTP (défaut: 8080)")
     args = parser.parse_args()
 
-    # Détection du profil d'étalonnage NoIR
+    # Détection et application du profil d'étalonnage NoIR pour libcamera
     tuning_file = None
     if args.noir:
         for candidate in [
@@ -92,23 +92,31 @@ def main():
                 tuning_file = candidate
                 break
 
+    if tuning_file:
+        os.environ["LIBCAMERA_RPI_TUNING_FILE"] = tuning_file
+
     print("=" * 60)
     print(f" CamFire - Stream Caméra Picamera2 ({args.width}x{args.height} @ {args.fps} FPS)")
     print(f" Qualité JPEG : {args.quality}% (Images légères ~12 Ko pour 0 latence)")
     if tuning_file:
-        print(f" Profil NoIR : Actif ({tuning_file})")
+        print(f" Profil NoIR : Actif via {tuning_file}")
     elif args.noir:
-        print(f" Profil NoIR : Demandé (adaptation logicielle active)")
+        print(f" Profil NoIR : Demandé")
     print("=" * 60)
 
-    try:
-        if tuning_file:
-            picam2 = Picamera2(tuning_file=tuning_file)
-        else:
+    # Initialisation de Picamera2 (compatible toutes versions libcamera / picamera2)
+    time.sleep(0.5)
+    picam2 = None
+    for attempt in range(3):
+        try:
             picam2 = Picamera2()
-    except Exception as e:
-        print(f"Erreur initialisation Picamera2: {e}")
-        picam2 = Picamera2()
+            break
+        except Exception as e:
+            if attempt < 2:
+                print(f"[Attente] Libération du périphérique caméra... ({e})")
+                time.sleep(1.5)
+            else:
+                raise e
 
     config = picam2.create_video_configuration(
         main={"size": (args.width, args.height)},
@@ -126,8 +134,13 @@ def main():
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        picam2.stop_recording()
         print("\nArrêt propre du flux vidéo.")
+    finally:
+        try:
+            picam2.stop_recording()
+            picam2.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()
