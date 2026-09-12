@@ -1,3 +1,4 @@
+import os
 import logging
 import smtplib
 import threading
@@ -18,7 +19,13 @@ from core.config import (
 logger = logging.getLogger("camfire.email")
 
 
-def _send_email_sync(subject: str, recipient: str, text_body: str, html_body: str) -> None:
+def _send_email_sync(
+    subject: str,
+    recipient: str,
+    text_body: str,
+    html_body: str,
+    attachment_path: Optional[str] = None
+) -> None:
     if not SMTP_HOST:
         print(f"[EMAIL] SMTP non configuré (SMTP_HOST vide). Envoi simulé pour : {recipient}")
         return
@@ -29,6 +36,15 @@ def _send_email_sync(subject: str, recipient: str, text_body: str, html_body: st
     message["To"] = recipient
     message.set_content(text_body)
     message.add_alternative(html_body, subtype="html")
+
+    if attachment_path and os.path.exists(attachment_path):
+        try:
+            with open(attachment_path, "rb") as f:
+                img_data = f.read()
+                filename = os.path.basename(attachment_path)
+                message.add_attachment(img_data, maintype="image", subtype="jpeg", filename=filename)
+        except Exception as att_err:
+            print(f"[EMAIL] Impossible d'attacher l'image {attachment_path}: {att_err}")
 
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=12) as smtp:
@@ -42,11 +58,17 @@ def _send_email_sync(subject: str, recipient: str, text_body: str, html_body: st
         print(f"[EMAIL ERROR] Échec de l'envoi de l'e-mail à {recipient}: {error}")
 
 
-def send_email_async(subject: str, recipient: str, text_body: str, html_body: str) -> None:
+def send_email_async(
+    subject: str,
+    recipient: str,
+    text_body: str,
+    html_body: str,
+    attachment_path: Optional[str] = None
+) -> None:
     """Envoie un e-mail dans un thread d'arrière-plan sans bloquer la requête HTTP."""
     thread = threading.Thread(
         target=_send_email_sync,
-        args=(subject, recipient, text_body, html_body),
+        args=(subject, recipient, text_body, html_body, attachment_path),
         daemon=True,
     )
     thread.start()
@@ -428,4 +450,72 @@ L'équipe Sécurité CamFire
         content=content,
     )
     send_email_async(subject, recipient, text_body, html_body)
+
+
+def send_fire_emergency_alert_email(
+    recipient: str,
+    device_name: str,
+    location: str,
+    confidence: float,
+    image_path: Optional[str] = None
+) -> None:
+    """
+    Envoie un e-mail d'alerte incendie critique immédiat au contact d'urgence configuré
+    avec la photo capturée par l'IA attachée.
+    """
+    now_str = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
+
+    print("=" * 60)
+    print(f"[🚨 ALERTE INCENDIE EMAIL] Envoi d'urgence à {recipient}")
+    print(f"  Appareil : {device_name} | Localisation : {location}")
+    print(f"  Confiance IA : {confidence:.1f}% | Photo : {image_path}")
+    print("=" * 60)
+
+    subject = f"🚨 ALERTE INCENDIE CRITIQUE — CamFire ({device_name})"
+    text_body = f"""URGENT — DÉPART DE FEU DÉTECTÉ
+
+Le système de vidéosurveillance intelligente CamFire a détecté un départ de feu ou une anomalie thermique critique.
+
+Détails de l'incident :
+- Équipement : {device_name}
+- Localisation : {location}
+- Indice de confiance IA : {confidence:.1f}%
+- Date et heure : {now_str}
+
+Une photo instantanée de l'incident est jointe à ce message.
+Veuillez vérifier immédiatement la situation et contacter les services de secours si nécessaire (18 / 112).
+
+— Centre d'Alerte CamFire
+"""
+
+    rows = [
+        ("Niveau de menace", "CRITIQUE (Départ de feu)"),
+        ("Équipement", device_name),
+        ("Localisation", location),
+        ("Confiance IA", f"{confidence:.1f}%"),
+        ("Horodatage", now_str),
+    ]
+
+    content = (
+        _detail_card(rows)
+        + """
+        <div style="margin-top:20px;padding:16px 18px;background:rgba(239,68,68,0.15);border:2px solid #ef4444;border-radius:10px;color:#fecaca;font-size:14px;line-height:1.6;">
+            ⚠️ <strong>ACTION IMMÉDIATE REQUISE :</strong><br>
+            Une flamme ou une fumée suspecte a été identifiée. Si la situation le nécessite, composez sans attendre les numéros d'urgence : <strong>18 (Pompiers)</strong> ou <strong>112 (Numéro européen)</strong>.
+        </div>
+        <p style="margin-top:16px;color:#94a3b8;font-size:13px;">
+            📸 La photo snapshot capturée au moment exact de la détection est attachée à cet e-mail.
+        </p>
+        """
+    )
+
+    html_body = _email_base_template(
+        eyebrow="Alerte Incendie Prioritaire",
+        title="DÉPART DE FEU DÉTECTÉ",
+        intro=f"Une détection critique d'incendie vient d'être enregistrée sur <strong>{escape(device_name)}</strong> :",
+        content=content,
+    )
+
+    send_email_async(subject, recipient, text_body, html_body, attachment_path=image_path)
+
 

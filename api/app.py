@@ -34,6 +34,10 @@ def _init_db_schema():
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code VARCHAR;"))
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code VARCHAR;"))
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMP;"))
+            # Colonnes Alertes E-mail d'Urgence (Photo Snapshot)
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_alert_email VARCHAR;"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_alerts_enabled BOOLEAN DEFAULT TRUE;"))
+            conn.execute(text("ALTER TABLE emergency_contacts ADD COLUMN IF NOT EXISTS email VARCHAR;"))
             try:
                 conn.execute(text("SELECT pg_advisory_unlock(748392);"))
             except Exception:

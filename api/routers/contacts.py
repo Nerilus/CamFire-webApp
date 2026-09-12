@@ -23,6 +23,7 @@ def add_contact(contact_in: ContactCreate, current_user: User = Depends(get_curr
         user_id=current_user.id,
         name=contact_in.name,
         phone=contact_in.phone,
+        email=contact_in.email,
         role=contact_in.role
     )
     db.add(new_contact)
