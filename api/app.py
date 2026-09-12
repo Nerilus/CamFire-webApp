@@ -25,11 +25,14 @@ def _init_db_schema():
             conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS tamper_status VARCHAR DEFAULT 'normal';"))
             conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS cpu_temp FLOAT;"))
             conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_tamper_alert_at TIMESTAMP;"))
-            # Colonnes 2FA pour la table users
+            # Colonnes 2FA & Récupération mot de passe pour la table users
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_2fa_enabled BOOLEAN DEFAULT TRUE;"))
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code_hash VARCHAR;"))
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;"))
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_attempts INTEGER DEFAULT 0;"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code VARCHAR;"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code VARCHAR;"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_expires_at TIMESTAMP;"))
             try:
                 conn.execute(text("SELECT pg_advisory_unlock(748392);"))
             except Exception:

@@ -11,18 +11,17 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     firstname = Column(String, nullable=True)
     lastname = Column(String, nullable=True)
-    otp_code = Column(String, nullable=True)
-    otp_expires_at = Column(DateTime, nullable=True)
-
     
     # Sécurité & Double Authentification (2FA)
     is_2fa_enabled = Column(Boolean, default=True, nullable=False)
     otp_code_hash = Column(String, nullable=True)
+    otp_code = Column(String, nullable=True)
     otp_expires_at = Column(DateTime, nullable=True)
+    otp_attempts = Column(Integer, default=0, nullable=False)
+
+    # Réinitialisation de mot de passe (Forgot Password)
     reset_code = Column(String, nullable=True)
     reset_code_expires_at = Column(DateTime, nullable=True)
-
-    otp_attempts = Column(Integer, default=0, nullable=False)
 
     contacts = relationship("EmergencyContact", back_populates="user", cascade="all, delete-orphan")
     user_devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
