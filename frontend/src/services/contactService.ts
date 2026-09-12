@@ -10,7 +10,7 @@ export interface EmergencyContact {
 }
 
 export interface EmergencyAlertSettings {
-  emergency_alert_email?: string | null;
+  emergency_alert_emails: string[];
   emergency_alerts_enabled: boolean;
 }
 
@@ -75,14 +75,14 @@ export const contactService = {
   },
 
   /**
-   * Met à jour l'e-mail d'urgence et l'activation des alertes avec photo
+   * Met à jour la liste des e-mails d'urgence et l'activation des alertes avec photo
    */
-  async updateEmergencyAlertSettings(email: string | null, enabled: boolean): Promise<EmergencyAlertSettings> {
+  async updateEmergencyAlertSettings(emails: string[], enabled: boolean): Promise<EmergencyAlertSettings> {
     const response = await fetch(`${API_URL}/auth/emergency-alerts`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify({
-        emergency_alert_email: email ? email.trim() : null,
+        emergency_alert_emails: emails,
         emergency_alerts_enabled: enabled,
       }),
     });

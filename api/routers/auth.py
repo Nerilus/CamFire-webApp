@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
+from typing import Optional, List
 import jwt
 import secrets
 import hashlib
@@ -511,11 +512,25 @@ def update_user_password(password_update: PasswordUpdate, db: Session = Depends(
     return {"message": "Mot de passe mis à jour avec succès"}
 
 
+def _parse_emergency_emails(raw_value: Optional[str]) -> List[str]:
+    if not raw_value:
+        return []
+    parts = [p.strip() for p in raw_value.replace(";", ",").split(",") if p.strip()]
+    seen = set()
+    result = []
+    for p in parts:
+        if p.lower() not in seen:
+            seen.add(p.lower())
+            result.append(p)
+    return result
+
+
 @router.get("/emergency-alerts", response_model=EmergencyAlertSettings)
 def get_emergency_alert_settings(current_user: User = Depends(get_current_user)):
-    """Récupère la configuration des alertes incendie par e-mail de l'utilisateur."""
+    """Récupère la liste des adresses e-mail d'urgence et l'état d'activation."""
+    emails = _parse_emergency_emails(getattr(current_user, "emergency_alert_email", None))
     return EmergencyAlertSettings(
-        emergency_alert_email=getattr(current_user, "emergency_alert_email", None),
+        emergency_alert_emails=emails,
         emergency_alerts_enabled=getattr(current_user, "emergency_alerts_enabled", True)
     )
 
@@ -526,12 +541,21 @@ def update_emergency_alert_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Met à jour l'e-mail d'urgence et l'activation des alertes incendie avec photo."""
-    current_user.emergency_alert_email = settings.emergency_alert_email.strip() if settings.emergency_alert_email else None
+    """Met à jour la liste des adresses e-mail d'urgence et l'état d'activation."""
+    clean_emails = []
+    seen = set()
+    for em in settings.emergency_alert_emails:
+        cleaned = em.strip()
+        if cleaned and cleaned.lower() not in seen:
+            seen.add(cleaned.lower())
+            clean_emails.append(cleaned)
+
+    current_user.emergency_alert_email = ", ".join(clean_emails) if clean_emails else None
     current_user.emergency_alerts_enabled = settings.emergency_alerts_enabled
     db.commit()
+
     return EmergencyAlertSettings(
-        emergency_alert_email=current_user.emergency_alert_email,
+        emergency_alert_emails=clean_emails,
         emergency_alerts_enabled=current_user.emergency_alerts_enabled
     )
 
@@ -541,18 +565,19 @@ def test_emergency_alert(
     current_user: User = Depends(get_current_user)
 ):
     """Envoie immédiatement un e-mail de test d'alerte incendie critique pour vérifier la réception."""
-    recipient = current_user.emergency_alert_email or current_user.email
-    if not recipient:
-        raise HTTPException(status_code=400, detail="Veuillez d'abord renseigner une adresse e-mail d'urgence.")
+    emails = _parse_emergency_emails(getattr(current_user, "emergency_alert_email", None))
+    if not emails:
+        emails = [current_user.email]
 
-    send_fire_emergency_alert_email(
-        recipient=recipient,
-        device_name="Raspberry Pi 4 — Test CamFire",
-        location="Zone de Surveillance (Test Manuel)",
-        confidence=98.5,
-        image_path=None
-    )
+    for recipient in emails:
+        send_fire_emergency_alert_email(
+            recipient=recipient,
+            device_name="Raspberry Pi 4 — Test CamFire",
+            location="Zone de Surveillance (Test Manuel)",
+            confidence=98.5,
+            image_path=None
+        )
     return {
         "status": "success",
-        "message": f"E-mail d'alerte de test envoyé avec succès à {recipient}."
+        "message": f"E-mail d'alerte de test envoyé avec succès à {', '.join(emails)}."
     }
