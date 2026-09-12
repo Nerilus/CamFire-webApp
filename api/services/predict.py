@@ -483,6 +483,54 @@ def _ensure_ai_worker():
         t.start()
         _ai_thread_started = True
 
+def ensure_dns_resolvable(url: str):
+    """
+    Auto-guérison DNS pour les tunnels Cloudflare (*.trycloudflare.com).
+    Si le résolveur DNS de l'hôte/Docker échoue (ex: Scaleway internal DNS ou propagation en cours),
+    cette fonction interroge directement le DNS over HTTPS de Cloudflare (https://1.1.1.1/dns-query)
+    et injecte l'IP dans /etc/hosts pour débloquer OpenCV et FFmpeg instantanément.
+    """
+    if not url:
+        return
+    try:
+        parsed = urllib.parse.urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        if not hostname or hostname in ("localhost", "127.0.0.1") or hostname.replace(".", "").isdigit():
+            return
+
+        try:
+            socket.gethostbyname(hostname)
+            return
+        except Exception:
+            pass
+
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        req = urllib.request.Request(
+            f"https://1.1.1.1/dns-query?name={hostname}&type=A",
+            headers={"Accept": "application/dns-json", "User-Agent": "CamFire-DNS/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=3, context=ctx) as resp:
+            data = json.loads(resp.read().decode())
+            answers = data.get("Answer", [])
+            ips = [a["data"] for a in answers if a.get("type") == 1]
+            if ips:
+                ip = ips[0]
+                try:
+                    with open("/etc/hosts", "r") as f:
+                        content = f.read()
+                    if hostname not in content:
+                        with open("/etc/hosts", "a") as f:
+                            f.write(f"\n{ip} {hostname}\n")
+                        print(f"[DNS Auto-Healing] Résolu {hostname} -> {ip} via 1.1.1.1 (injecté dans /etc/hosts)")
+                except Exception as fe:
+                    print(f"[DNS Auto-Healing] Note /etc/hosts: {fe}")
+    except Exception:
+        pass
+
 def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
     global _current_raw_frame
     if _model is None:
@@ -502,6 +550,9 @@ def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
             clean_url = current_url.rstrip("/")
             if clean_url.endswith(":8080") or ("trycloudflare.com" in clean_url and not clean_url.endswith(".mjpg")):
                 current_url = clean_url + "/stream.mjpg"
+
+        # Résolution DNS prompte & auto-guérison anti-NXDOMAIN pour Cloudflare
+        ensure_dns_resolvable(current_url)
 
         cap = None
         try:
