@@ -3,9 +3,10 @@
 CamFire IoT Agent - Script de Provisioning, Télémétrie et Supervision Matérielle pour Raspberry Pi 4
 Ce script s'exécute sur le Raspberry Pi pour :
 1. Détecter l'identifiant matériel unique du Raspberry Pi
-2. Démarrer et superviser automatiquement le tunnel Cloudflare (quick tunnel)
-3. Synchroniser la configuration et le flux vidéo avec le serveur CamFire
-4. Émettre un Heartbeat cryptographique toutes les 15 secondes (Dead Man's Switch)
+2. Démarrer et superviser automatiquement le flux caméra Picamera2 (30 FPS, NoIR)
+3. Démarrer et superviser automatiquement le tunnel Cloudflare (quick tunnel)
+4. Synchroniser la configuration et le flux vidéo avec le serveur CamFire
+5. Émettre un Heartbeat cryptographique toutes les 15 secondes (Dead Man's Switch)
 """
 
 import os
@@ -80,6 +81,64 @@ def is_local_camera_running(port: int = 8080) -> bool:
         return res == 0
     except Exception:
         return False
+
+def ensure_local_camera_stream(port: int = 8080, fps: int = 30) -> bool:
+    """
+    Assure que le flux caméra Picamera2 tourne en local sur le port 8080.
+    Si non actif, télécharge la dernière version de stream_pi.py et la lance en arrière-plan.
+    """
+    if is_local_camera_running(port):
+        return True
+
+    print(f"    • [Caméra] Flux local inactif sur le port {port}. Démarrage automatique...")
+
+    # Télécharger la dernière version de stream_pi.py depuis GitHub
+    script_path = "stream_pi.py"
+    try:
+        url = "https://raw.githubusercontent.com/Nerilus/CamFire-webApp/main/api/scripts/stream_pi.py"
+        req = urllib.request.Request(url, headers={"User-Agent": "CamFire-Agent/1.0"})
+        with urllib.request.urlopen(req, timeout=5, context=ssl_context) as resp:
+            content = resp.read().decode('utf-8')
+            with open(script_path, "w") as f:
+                f.write(content)
+    except Exception as e:
+        pass
+
+    # Libérer tout ancien processus bloquant la caméra
+    try:
+        subprocess.run(["pkill", "-9", "-f", "stream.py"], capture_output=True)
+        subprocess.run(["pkill", "-9", "-f", "stream_pi.py"], capture_output=True)
+        time.sleep(1)
+    except Exception:
+        pass
+
+    log_cam = "/tmp/camfire_camera.log"
+    try:
+        f_log = open(log_cam, "w")
+    except Exception:
+        f_log = subprocess.DEVNULL
+
+    cmd = [sys.executable, script_path, "--fps", str(fps), "--noir", "--port", str(port)]
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=f_log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True
+        )
+    except Exception as e:
+        print(f"    • [Caméra] Erreur au lancement de stream_pi.py: {e}")
+        return False
+
+    # Attendre que le serveur caméra soit prêt (jusqu'à 6 secondes)
+    for _ in range(12):
+        time.sleep(0.5)
+        if is_local_camera_running(port):
+            print(f"    • [Caméra] Caméra initialisée : \033[1;32mhttp://127.0.0.1:{port}/stream.mjpg\033[0m ({fps} FPS, NoIR)")
+            return True
+
+    print("    • [Caméra] La caméra est en cours d'initialisation (logs dans /tmp/camfire_camera.log)")
+    return False
 
 def is_cloudflared_running() -> bool:
     """Vérifie si le processus cloudflared est en cours d'exécution."""
@@ -242,16 +301,17 @@ def heartbeat_worker_loop(hw_id: str, server_url: str, provision_key: str, get_s
     """Boucle perpétuelle d'émission du Dead Man's Switch (toutes les 15s)."""
     current_stream = get_stream_fn()
     while True:
-        # Si cloudflared s'est arrêté de manière inattendue, le relancer
+        # Supervision de la caméra locale
+        if not is_local_camera_running(8080):
+            print("\033[1;33m[Caméra] Flux local interrompu. Relance automatique...\033[0m")
+            ensure_local_camera_stream(8080, fps=30)
+
+        # Supervision du tunnel Cloudflare
         if not is_cloudflared_running():
-            print("\033[1;33m[Tunnel] Processus cloudflared inactif. Démarrage...\033[0m")
+            print("\033[1;33m[Tunnel] Processus cloudflared inactif. Relance automatique...\033[0m")
             new_stream = get_stream_fn()
             if new_stream:
                 current_stream = new_stream
-
-        # Signal d'alerte si le flux vidéo local sur le port 8080 ne tourne pas
-        if not is_local_camera_running(8080):
-            print("\033[1;33m[Caméra] Attention : aucun flux actif sur http://127.0.0.1:8080 (lancez python3 stream_pi.py)\033[0m")
 
         temp = get_cpu_temperature()
         ok = send_heartbeat(hw_id, server_url, provision_key, current_stream)
@@ -265,6 +325,7 @@ def main():
     parser.add_argument("--server", default=os.getenv("CAMFIRE_SERVER_URL", DEFAULT_SERVER_URL), help="URL du serveur CamFire")
     parser.add_argument("--tunnel-url", default=None, help="URL publique du tunnel Cloudflare (ex: https://xxx.trycloudflare.com)")
     parser.add_argument("--key", default=os.getenv("DEVICE_PROVISION_KEY", DEFAULT_PROVISION_KEY), help="Clé d'usine de provisioning")
+    parser.add_argument("--fps", type=int, default=30, help="Framerate de la caméra (défaut: 30)")
     args = parser.parse_args()
 
     print_banner()
@@ -278,12 +339,10 @@ def main():
     print(f"    • Température Processeur BCM2711 : {get_cpu_temperature()}°C")
     print(f"    • Serveur Cible CamFire          : \033[1;34m{args.server}\033[0m")
 
-    # Diagnostic de la caméra locale
-    if is_local_camera_running(8080):
-        print("    • Caméra Locale (Port 8080)      : \033[1;32mEn ligne\033[0m")
-    else:
-        print("    • Caméra Locale (Port 8080)      : \033[1;33mNon détectée (démarrez python3 stream_pi.py)\033[0m")
+    # 1. Démarrer automatiquement la caméra en local si besoin
+    ensure_local_camera_stream(port=8080, fps=args.fps)
 
+    # 2. Démarrer / superviser le tunnel Cloudflare
     stream_url = detect_stream_url(args.tunnel_url)
     print(f"    • Flux Vidéo Sélectionné         : \033[1;36m{stream_url}\033[0m")
 
@@ -335,6 +394,7 @@ def main():
 
     # Démarrage de la boucle active Dead Man's Switch
     print(f"\n[3] Surveillance Continue Active (Dead Man's Switch) :")
+    print("    • Caméra (30 FPS) & Tunnel Cloudflare gérés automatiquement.")
     print("    • Émission de battements sécurisés toutes les 15 secondes...")
     print("    • Appuyez sur Ctrl+C pour interrompre l'agent.\n")
 
