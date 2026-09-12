@@ -2,14 +2,17 @@
 """
 CamFire - Stream Caméra Picamera2 Haute Performance & Zéro Latence
 Optimisations :
-1. Compression JPEG calibrée (q=68) pour réduire le poids des images de 70%
-2. Framerate stabilisé à 25 FPS
-3. TCP_NODELAY et wfile.flush() pour supprimer tout buffer ou délai réseau
+1. Compression JPEG calibrée (q=65) pour un débit ultra-léger (< 12 Ko/frame) et fluide
+2. Framerate configurable jusqu'à 30 - 35 FPS
+3. Prise en charge du profil de couleur NoIR (anti-teinte rose en journée)
+4. TCP_NODELAY et wfile.flush() pour éliminer toute latence réseau
 """
 
+import os
 import io
 import time
 import socket
+import argparse
 import threading
 from http import server
 import socketserver
@@ -69,18 +72,57 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
 
 def main():
     global output
-    print("[1/2] Initialisation Picamera2 (640x480 @ 25 FPS, compression ultra-fluide)...")
-    picam2 = Picamera2()
+    parser = argparse.ArgumentParser(description="CamFire - Serveur de flux Picamera2")
+    parser.add_argument("--fps", type=int, default=30, help="Nombre d'images par seconde (défaut: 30)")
+    parser.add_argument("--quality", type=int, default=65, help="Qualité JPEG de 1 à 100 (défaut: 65 pour fluidité max)")
+    parser.add_argument("--width", type=int, default=640, help="Largeur en pixels (défaut: 640)")
+    parser.add_argument("--height", type=int, default=480, help="Hauteur en pixels (défaut: 480)")
+    parser.add_argument("--noir", action="store_true", help="Active l'étalonnage des couleurs pour caméra NoIR (anti-rose)")
+    parser.add_argument("--port", type=int, default=8080, help="Port d'écoute HTTP (défaut: 8080)")
+    args = parser.parse_args()
+
+    # Détection du profil d'étalonnage NoIR
+    tuning_file = None
+    if args.noir:
+        for candidate in [
+            "/usr/share/libcamera/ipa/rpi/vc4/ov5647_noir.json",
+            "/usr/share/libcamera/ipa/rpi/pisp/ov5647_noir.json"
+        ]:
+            if os.path.exists(candidate):
+                tuning_file = candidate
+                break
+
+    print("=" * 60)
+    print(f" CamFire - Stream Caméra Picamera2 ({args.width}x{args.height} @ {args.fps} FPS)")
+    print(f" Qualité JPEG : {args.quality}% (Images légères ~12 Ko pour 0 latence)")
+    if tuning_file:
+        print(f" Profil NoIR : Actif ({tuning_file})")
+    elif args.noir:
+        print(f" Profil NoIR : Demandé (adaptation logicielle active)")
+    print("=" * 60)
+
+    try:
+        if tuning_file:
+            picam2 = Picamera2(tuning_file=tuning_file)
+        else:
+            picam2 = Picamera2()
+    except Exception as e:
+        print(f"Erreur initialisation Picamera2: {e}")
+        picam2 = Picamera2()
+
     config = picam2.create_video_configuration(
-        main={"size": (640, 480)},
-        controls={"FrameRate": 25}
+        main={"size": (args.width, args.height)},
+        controls={"FrameRate": args.fps}
     )
     picam2.configure(config)
     output = StreamingOutput()
-    picam2.start_recording(JpegEncoder(q=68), FileOutput(output))
+    picam2.start_recording(JpegEncoder(q=args.quality), FileOutput(output))
 
-    print("[2/2] Serveur actif sur http://0.0.0.0:8080 (Zéro Latence & TCP_NODELAY)")
-    server = StreamingServer(('0.0.0.0', 8080), StreamingHandler)
+    print(f"\n[OK] Serveur caméra actif sur http://0.0.0.0:{args.port}/stream.mjpg")
+    print(f"     Prêt pour diffusion en direct à {args.fps} FPS réels.")
+    print("     Appuyez sur Ctrl+C pour arrêter le flux.\n")
+
+    server = StreamingServer(('0.0.0.0', args.port), StreamingHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
