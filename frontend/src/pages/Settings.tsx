@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon, TrashIcon, MailIcon } from '../components/icons';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 import { contactService, type EmergencyContact } from '../services/contactService';
 import { deviceService, type Device, type DeviceMember } from '../services/deviceService';
@@ -34,6 +35,11 @@ export const Settings: React.FC = () => {
   const [savingAlertSettings, setSavingAlertSettings] = useState(false);
   const [testingAlert, setTestingAlert] = useState(false);
   const [alertFeedbackMsg, setAlertFeedbackMsg] = useState<{ type: string; text: string }>({ type: '', text: '' });
+
+  // Modales de confirmation personnalisées
+  const [emailToDelete, setEmailToDelete] = useState<string | null>(null);
+  const [memberToRevoke, setMemberToRevoke] = useState<{ deviceId: string; userId: number; email: string } | null>(null);
+  const [contactToDelete, setContactToDelete] = useState<EmergencyContact | null>(null);
 
   useEffect(() => {
     loadContacts();
@@ -85,10 +91,10 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleRevokeMember = async (deviceId: string, userId: number, email: string) => {
-    if (!window.confirm(`Voulez-vous vraiment révoquer l'accès de ${email} à cet appareil ?`)) {
-      return;
-    }
+  const handleConfirmRevokeMember = async () => {
+    if (!memberToRevoke) return;
+    const { deviceId, userId, email } = memberToRevoke;
+    setMemberToRevoke(null);
     setTeamMsg({ type: '', text: '' });
     try {
       await deviceService.revokeMember(deviceId, userId);
@@ -141,17 +147,17 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleDeleteEmergencyEmail = async (emailToDelete: string) => {
-    if (!window.confirm(`Supprimer ${emailToDelete} de la liste des e-mails d'urgence ?`)) {
-      return;
-    }
-    const updated = emergencyAlertEmails.filter((em) => em.toLowerCase() !== emailToDelete.toLowerCase());
+  const handleConfirmDeleteEmergencyEmail = async () => {
+    if (!emailToDelete) return;
+    const target = emailToDelete;
+    setEmailToDelete(null);
+    const updated = emergencyAlertEmails.filter((em) => em.toLowerCase() !== target.toLowerCase());
     setSavingAlertSettings(true);
     setAlertFeedbackMsg({ type: '', text: '' });
     try {
       const res = await contactService.updateEmergencyAlertSettings(updated, emergencyAlertsEnabled);
       setEmergencyAlertEmails(res.emergency_alert_emails);
-      setAlertFeedbackMsg({ type: 'success', text: `L'adresse ${emailToDelete} a été supprimée des alertes.` });
+      setAlertFeedbackMsg({ type: 'success', text: `L'adresse ${target} a été supprimée des alertes.` });
     } catch (err: any) {
       setAlertFeedbackMsg({ type: 'error', text: err.message || "Erreur lors de la suppression de l'e-mail." });
     } finally {
@@ -185,7 +191,10 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleDeleteContact = async (id: number) => {
+  const handleConfirmDeleteContact = async () => {
+    if (!contactToDelete) return;
+    const { id } = contactToDelete;
+    setContactToDelete(null);
     try {
       await contactService.deleteContact(id);
       loadContacts();
@@ -241,7 +250,7 @@ export const Settings: React.FC = () => {
                           <button
                             type="button"
                             className="team-revoke-btn"
-                            onClick={() => handleRevokeMember(dev.device_id, m.user_id, m.email)}
+                            onClick={() => setMemberToRevoke({ deviceId: dev.device_id, userId: m.user_id, email: m.email })}
                           >
                             Révoquer l'accès
                           </button>
@@ -325,7 +334,7 @@ export const Settings: React.FC = () => {
                     <button
                       type="button"
                       className="emergency-delete-btn"
-                      onClick={() => handleDeleteEmergencyEmail(email)}
+                      onClick={() => setEmailToDelete(email)}
                       disabled={savingAlertSettings}
                       title={`Supprimer ${email} des contacts d'urgence`}
                     >
@@ -450,7 +459,7 @@ export const Settings: React.FC = () => {
                 <span>{c.phone} {c.email ? `• ${c.email}` : ''}</span>
               </div>
               <span className="contact-role">{c.role}</span>
-              <button className="contact-delete-btn" onClick={() => handleDeleteContact(c.id)}>
+              <button className="contact-delete-btn" onClick={() => setContactToDelete(c)} title={`Supprimer ${c.name}`}>
                 <TrashIcon size={16} />
               </button>
             </div>
@@ -525,6 +534,47 @@ export const Settings: React.FC = () => {
       >
         Se déconnecter
       </button>
+
+      {/* Modal Confirmation de Suppression d'Email d'Urgence */}
+      <ConfirmModal
+        isOpen={!!emailToDelete}
+        title="Supprimer l'e-mail d'urgence ?"
+        message="Cette adresse e-mail ne recevra plus les alertes d'urgence avec la photo capturée par l'IA lors d'un départ de feu."
+        itemHighlight={emailToDelete || ''}
+        itemIcon={<MailIcon size={16} color="#ff7043" />}
+        confirmText="Supprimer l'e-mail"
+        cancelText="Annuler"
+        isDestructive={true}
+        isLoading={savingAlertSettings}
+        onConfirm={handleConfirmDeleteEmergencyEmail}
+        onClose={() => setEmailToDelete(null)}
+      />
+
+      {/* Modal Confirmation de Révocation d'Accès Membre */}
+      <ConfirmModal
+        isOpen={!!memberToRevoke}
+        title="Révoquer l'accès à la caméra ?"
+        message="Ce membre ne pourra plus visualiser le flux vidéo de votre Raspberry Pi ni recevoir les alertes associées."
+        itemHighlight={memberToRevoke?.email || ''}
+        confirmText="Révoquer l'accès"
+        cancelText="Annuler"
+        isDestructive={true}
+        onConfirm={handleConfirmRevokeMember}
+        onClose={() => setMemberToRevoke(null)}
+      />
+
+      {/* Modal Confirmation de Suppression de Contact */}
+      <ConfirmModal
+        isOpen={!!contactToDelete}
+        title="Supprimer ce contact ?"
+        message="Êtes-vous sûr de vouloir supprimer ce contact de votre carnet d'urgence ?"
+        itemHighlight={contactToDelete ? `${contactToDelete.name} (${contactToDelete.phone})` : ''}
+        confirmText="Supprimer le contact"
+        cancelText="Annuler"
+        isDestructive={true}
+        onConfirm={handleConfirmDeleteContact}
+        onClose={() => setContactToDelete(null)}
+      />
     </div>
   );
 };
