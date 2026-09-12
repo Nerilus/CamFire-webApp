@@ -72,15 +72,17 @@ def get_local_ip() -> str:
         return "127.0.0.1"
 
 def is_local_camera_running(port: int = 8080) -> bool:
-    """Vérifie si le serveur vidéo de la caméra écoute sur le port local."""
+    """Vérifie si le serveur vidéo supporte bien la dernière version avec haut-parleur et alarme."""
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.5)
-        res = s.connect_ex(('127.0.0.1', port))
-        s.close()
-        return res == 0
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/status", headers={"User-Agent": "CamFire-Agent/1.0"})
+        with urllib.request.urlopen(req, timeout=1.5, context=ssl_context) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode('utf-8'))
+                # Seule la nouvelle version renvoie has_speaker ou alarm_active
+                return "has_speaker" in data or "alarm_active" in data
     except Exception:
-        return False
+        pass
+    return False
 
 def ensure_local_camera_stream(
     port: int = 8080, 
@@ -90,33 +92,35 @@ def ensure_local_camera_stream(
     blue_gain: Optional[float] = None
 ) -> bool:
     """
-    Assure que le flux caméra Picamera2 tourne en local sur le port 8080.
-    Si non actif, télécharge la dernière version de stream_pi.py et la lance en arrière-plan.
+    Assure que le flux caméra Picamera2 tourne en local sur le port 8080 avec le support audio/alarme.
+    Si non actif ou version obsolète, tue l'ancien serveur, met à jour stream_pi.py et le lance.
     """
     if is_local_camera_running(port):
         return True
 
-    print(f"    • [Caméra] Flux local inactif sur le port {port}. Démarrage automatique...")
+    print(f"    • [Caméra] Serveur vidéo absent ou obsolète sur le port {port}. Arrêt des anciens processus...")
+
+    # Libérer tout ancien processus bloquant la caméra ou le port
+    try:
+        subprocess.run(["pkill", "-9", "-f", "stream.py"], capture_output=True)
+        subprocess.run(["pkill", "-9", "-f", "stream_pi.py"], capture_output=True)
+        subprocess.run(["fuser", "-k", f"{port}/tcp"], capture_output=True)
+        time.sleep(1.5)
+    except Exception:
+        pass
 
     # Télécharger la dernière version de stream_pi.py depuis GitHub avec cache busting
     script_path = "stream_pi.py"
     try:
         url = f"https://raw.githubusercontent.com/Nerilus/CamFire-webApp/main/api/scripts/stream_pi.py?v={int(time.time())}"
         req = urllib.request.Request(url, headers={"User-Agent": "CamFire-Agent/1.0"})
-        with urllib.request.urlopen(req, timeout=5, context=ssl_context) as resp:
+        with urllib.request.urlopen(req, timeout=6, context=ssl_context) as resp:
             content = resp.read().decode('utf-8')
             with open(script_path, "w") as f:
                 f.write(content)
-    except Exception:
-        pass
-
-    # Libérer tout ancien processus bloquant la caméra
-    try:
-        subprocess.run(["pkill", "-9", "-f", "stream.py"], capture_output=True)
-        subprocess.run(["pkill", "-9", "-f", "stream_pi.py"], capture_output=True)
-        time.sleep(1)
-    except Exception:
-        pass
+        print("    • [Caméra] Dernière version de stream_pi.py téléchargée avec succès.")
+    except Exception as e:
+        print(f"    • [Caméra] Note téléchargement: {e}")
 
     log_cam = "/tmp/camfire_camera.log"
     try:
