@@ -214,7 +214,9 @@ def provision_device(
             dev.stream_url = req.stream_url
         if req.name:
             dev.name = req.name
-        if not dev.is_paired:
+        active_members = db.query(UserDevice).filter(UserDevice.device_id == dev.id).count()
+        if active_members == 0:
+            dev.is_paired = False
             dev.hashed_pairing_code = get_password_hash(req.pairing_code)
             dev.code_expires_at = expires_at
         db.commit()
@@ -392,10 +394,24 @@ def pair_device(
 
     # 2. Vérification de l'expiration du code (TTL)
     if device.code_expires_at and datetime.utcnow() > device.code_expires_at:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Le code d'appairage a expiré. Demandez au propriétaire de l'appareil de générer un nouveau code."
-        )
+        active_members_count = db.query(UserDevice).filter(UserDevice.device_id == device.id).count()
+        if active_members_count == 0:
+            # Si aucun compte n'est encore lié et que le code d'usine/agent est valide,
+            # on renouvelle automatiquement le TTL 24h pour permettre au propriétaire d'enregistrer son matériel
+            if verify_password(pair_in.pairing_code.strip(), device.hashed_pairing_code):
+                device.code_expires_at = datetime.utcnow() + timedelta(hours=24)
+                db.commit()
+            else:
+                remaining = record_pair_failure(client_id, target_device_id)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Code secret d'appairage incorrect. {remaining} tentative(s) restante(s)."
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Le code d'appairage a expiré. Demandez au propriétaire de l'appareil de générer un nouveau code d'invitation depuis son profil CamFire."
+            )
 
     # 3. Vérification cryptographique du code secret
     if not verify_password(pair_in.pairing_code.strip(), device.hashed_pairing_code):

@@ -43,6 +43,13 @@ export const Profile: React.FC = () => {
   const [unpairPassword, setUnpairPassword] = useState('');
   const [isUnpairing, setIsUnpairing] = useState(false);
 
+  // Modal nouveau code d'appairage (pour propriétaire)
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [targetDeviceIdForCode, setTargetDeviceIdForCode] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [loadingCode, setLoadingCode] = useState(false);
+
   // Tickets
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
@@ -207,6 +214,27 @@ export const Profile: React.FC = () => {
     }
   };
 
+  const handleGenerateNewCode = async (devId: string) => {
+    setLoadingCode(true);
+    setTargetDeviceIdForCode(devId);
+    setCodeCopied(false);
+    try {
+      const res = await deviceService.refreshPairingCode(devId);
+      setGeneratedCode(res.new_pairing_code);
+      setShowCodeModal(true);
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de la génération du code.");
+    } finally {
+      setLoadingCode(false);
+    }
+  };
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(generatedCode);
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 2000);
+  };
+
   return (
     <div className="page">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -255,13 +283,25 @@ export const Profile: React.FC = () => {
                   <span>Lié le : {dev.paired_at ? new Date(dev.paired_at).toLocaleDateString('fr-FR') : 'Récemment'}</span>
                 </div>
 
-                <button 
-                  type="button" 
-                  className="device-unpair-btn"
-                  onClick={() => handleOpenUnpairModal(dev.device_id)}
-                >
-                  Dissocier cet appareil
-                </button>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '4px' }}>
+                  {dev.role === 'owner' && (
+                    <button
+                      type="button"
+                      className="device-refresh-btn"
+                      onClick={() => handleGenerateNewCode(dev.device_id)}
+                      disabled={loadingCode && targetDeviceIdForCode === dev.device_id}
+                    >
+                      🔑 {loadingCode && targetDeviceIdForCode === dev.device_id ? 'Génération...' : "Inviter / Nouveau code"}
+                    </button>
+                  )}
+                  <button 
+                    type="button" 
+                    className="device-unpair-btn"
+                    onClick={() => handleOpenUnpairModal(dev.device_id)}
+                  >
+                    Dissocier cet appareil
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -299,37 +339,103 @@ export const Profile: React.FC = () => {
             <p style={{ color: 'var(--text-dim)', fontSize: '13px', lineHeight: '1.4' }}>
               Pour des raisons de sécurité, veuillez confirmer votre mot de passe pour dissocier l'appareil <strong>{targetUnpairDeviceId}</strong>.
             </p>
-            <form onSubmit={handleConfirmUnpair} className="profile-form">
-              <div className="profile-form-group">
-                <label>Mot de passe du compte</label>
+            <form onSubmit={handleConfirmUnpair} style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-dim)', marginBottom: '6px' }}>
+                  Votre mot de passe actuel
+                </label>
                 <input 
-                  type="password" 
-                  value={unpairPassword} 
-                  onChange={(e) => setUnpairPassword(e.target.value)} 
-                  placeholder="••••••••" 
-                  required 
-                  autoFocus
+                  type="password"
+                  value={unpairPassword}
+                  onChange={(e) => setUnpairPassword(e.target.value)}
+                  placeholder="Mot de passe"
+                  required
+                  style={{
+                    width: '100%', padding: '10px 12px', borderRadius: '8px',
+                    border: '1px solid var(--border)', backgroundColor: 'var(--surface-2)',
+                    color: '#fff', fontSize: '14px', boxSizing: 'border-box'
+                  }}
                 />
               </div>
-              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
                 <button 
                   type="button" 
-                  className="btn btn-dark" 
-                  style={{ flex: 1 }} 
+                  className="btn btn-secondary" 
                   onClick={() => setShowUnpairModal(false)}
+                  style={{ flex: 1 }}
                 >
                   Annuler
                 </button>
                 <button 
                   type="submit" 
                   className="btn" 
-                  style={{ flex: 1, background: '#ef4444' }} 
                   disabled={isUnpairing}
+                  style={{ flex: 1, backgroundColor: '#ef4444', borderColor: '#ef4444' }}
                 >
-                  {isUnpairing ? 'En cours...' : 'Dissocier'}
+                  {isUnpairing ? 'Dissociation...' : 'Confirmer'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Nouveau Code d'Appairage (Partage Propriétaire) */}
+      {showCodeModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: '16px', padding: '24px', maxWidth: '420px', width: '100%',
+            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.6)'
+          }}>
+            <h3 style={{ color: '#fff', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              🔑 Code d'Appairage Sécurisé
+            </h3>
+            <p style={{ color: 'var(--text-dim)', fontSize: '13px', lineHeight: '1.5', margin: '0 0 16px 0' }}>
+              Un nouveau code valide pendant <strong>24 heures</strong> a été généré pour votre appareil <strong>{targetDeviceIdForCode}</strong>.
+            </p>
+
+            <div style={{
+              background: '#0d0d12', border: '1px dashed #ff4500', borderRadius: '12px',
+              padding: '18px', textAlign: 'center', marginBottom: '16px'
+            }}>
+              <span style={{
+                fontFamily: 'Consolas, monospace', fontSize: '28px', fontWeight: 800,
+                color: '#ff5722', letterSpacing: '4px', display: 'block'
+              }}>
+                {generatedCode}
+              </span>
+              <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px', display: 'block' }}>
+                ⏱️ Expire dans 24 heures
+              </span>
+            </div>
+
+            <p style={{ color: 'var(--text-dim)', fontSize: '12px', lineHeight: '1.4', margin: '0 0 20px 0' }}>
+              Transmettez ce code à la personne souhaitant associer votre caméra. Dès qu'elle l'aura enregistré, vous recevrez une alerte de sécurité et son compte deviendra membre partagé.
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleCopyCode}
+                style={{ flex: 1 }}
+              >
+                {codeCopied ? '✓ Copié !' : '📋 Copier le code'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowCodeModal(false)}
+                style={{ flex: 1 }}
+              >
+                Fermer
+              </button>
+            </div>
           </div>
         </div>
       )}
