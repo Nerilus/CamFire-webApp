@@ -166,11 +166,14 @@ def extract_tunnel_url_from_log(log_path: str = "/tmp/cloudflared.log") -> Optio
         pass
     return None
 
+_cloudflared_process = None
+
 def ensure_cloudflared_tunnel(local_port: int = 8080) -> Optional[str]:
     """
     Démarre et supervise le tunnel Cloudflare vers le port local de la caméra.
-    Ne relance un processus QUE si cloudflared est inactif ou arrêté.
+    Lit la sortie en temps réel pour capturer l'URL instantanément sans délai de buffering.
     """
+    global _cloudflared_process
     cloudflared_bin = shutil.which("cloudflared")
     if not cloudflared_bin:
         for p in ["/usr/local/bin/cloudflared", "/usr/bin/cloudflared", "/opt/cloudflared/cloudflared"]:
@@ -179,6 +182,7 @@ def ensure_cloudflared_tunnel(local_port: int = 8080) -> Optional[str]:
                 break
 
     if not cloudflared_bin:
+        print("    • [Tunnel] Erreur : binaire cloudflared introuvable dans le PATH.")
         return None
 
     log_path = "/tmp/cloudflared.log"
@@ -189,7 +193,7 @@ def ensure_cloudflared_tunnel(local_port: int = 8080) -> Optional[str]:
         if existing_url:
             return existing_url
 
-    # 2. Si non lancé, démarrer cloudflared proprement
+    # 2. Démarrage propre
     print("    • [Tunnel] Lancement de Cloudflare Tunnel vers http://127.0.0.1:8080...")
     try:
         subprocess.run(["pkill", "-9", "-f", "cloudflared"], capture_output=True)
@@ -198,31 +202,49 @@ def ensure_cloudflared_tunnel(local_port: int = 8080) -> Optional[str]:
         pass
 
     try:
-        log_file = open(log_path, "w")
+        with open(log_path, "w") as f:
+            f.write("")
     except Exception:
-        log_file = subprocess.DEVNULL
+        pass
 
     cmd = [cloudflared_bin, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{local_port}"]
     try:
-        subprocess.Popen(
+        _cloudflared_process = subprocess.Popen(
             cmd,
-            stdout=log_file,
+            stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            start_new_session=True
+            text=True,
+            bufsize=1
         )
     except Exception as e:
         print(f"    • [Tunnel] Erreur au démarrage de cloudflared: {e}")
         return None
 
-    # 3. Attendre la publication de la nouvelle URL dans le log (jusqu'à 35 secondes)
-    for i in range(70):
-        time.sleep(0.5)
-        detected_url = extract_tunnel_url_from_log(log_path)
-        if detected_url:
-            print(f"    • [Tunnel] Tunnel établi : \033[1;32m{detected_url}\033[0m")
-            return detected_url
-        if i > 0 and i % 10 == 0:
-            print(f"    • [Tunnel] Connexion au réseau Cloudflare en cours... ({i // 2}s)")
+    found_event = threading.Event()
+    discovered = [None]
+
+    def _pipe_reader():
+        with open(log_path, "a") as f_log:
+            for line in iter(_cloudflared_process.stdout.readline, ''):
+                f_log.write(line)
+                f_log.flush()
+                clean = line.strip()
+                if "INF" in clean or "ERR" in clean:
+                    if any(w in clean.lower() for w in ["requesting", "created", "error", "failed", "retry", "registered"]):
+                        print(f"      [Cloudflare] {clean}")
+                m = re.search(r"https://([a-zA-Z0-9-_]+)\.trycloudflare\.com", clean)
+                if m and m.group(1).lower() not in ("api", "www"):
+                    discovered[0] = f"https://{m.group(1)}.trycloudflare.com/stream.mjpg"
+                    found_event.set()
+
+    t = threading.Thread(target=_pipe_reader, daemon=True, name="CloudflaredPipeReader")
+    t.start()
+
+    # Attente active jusqu'à 30 secondes
+    if found_event.wait(timeout=30):
+        url = discovered[0]
+        print(f"    • [Tunnel] Tunnel établi : \033[1;32m{url}\033[0m")
+        return url
 
     print("    • [Tunnel] Délai d'attente dépassé pour la détection de l'URL Cloudflare.")
     if os.path.exists(log_path):
