@@ -257,6 +257,8 @@ latest_detection = {
 _ai_lock = threading.Lock()
 _current_raw_frame = None
 _current_boxes = []
+_ai_thread_started = False
+
 def correct_noir_colors(img: np.ndarray) -> np.ndarray:
     """
     Restaure les couleurs naturelles (arbres et feuillage verts, sol neutre, plafond blanc)
