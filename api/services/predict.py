@@ -261,43 +261,48 @@ _ai_thread_started = False
 
 def correct_noir_colors(img: np.ndarray) -> np.ndarray:
     """
-    Étalonnage couleur universel et balance des blancs adaptative (Gray World).
-    Restaure un rendu 100% naturel :
-    - Plafonds et murs blancs purs
-    - Teint de peau humain naturel (zéro vert / zéro Hulk)
-    - Élimination de la dominante rose NoIR sans verdir la scène
-    - Flammes et feux 100% préservés
+    Correction physique NoIR et balance des blancs adaptative (Gray World).
+    - Neutralise la contamination infrarouge (NIR) qui transforme les vêtements noirs en violet/mauve.
+    - Restaure le noir profond sur les t-shirts, tissus et objets noirs.
+    - Conserve le teint de peau naturel humain (tons chauds, zéro teinte verte ou violette).
+    - Maintient les plafonds et murs en blanc pur.
+    - Préserve intégralement les flammes et le feu (100% insensible au filtre NIR).
     """
     if img is None or img.size == 0:
         return img
     try:
-        # 1. Si une sur-saturation verte est présente, la neutraliser
-        b, g, r = cv2.split(img)
-        excess_g = np.maximum(0, g.astype(np.int16) - ((r.astype(np.int16) + b.astype(np.int16)) // 2))
-        if np.mean(excess_g) > 15:
-            g = np.clip(g.astype(np.int16) - (excess_g * 0.85), 0, 255).astype(np.uint8)
-            r = np.clip(r.astype(np.int16) + (excess_g * 0.40), 0, 255).astype(np.uint8)
-            b = np.clip(b.astype(np.int16) + (excess_g * 0.20), 0, 255).astype(np.uint8)
-            img = cv2.merge([b, g, r])
-
-        # 2. Balance des blancs adaptative Gray World
         img_f = img.astype(np.float32)
-        mean_b = float(np.mean(img_f[:, :, 0]))
-        mean_g = float(np.mean(img_f[:, :, 1]))
-        mean_r = float(np.mean(img_f[:, :, 2]))
+        b, g, r = img_f[:, :, 0], img_f[:, :, 1], img_f[:, :, 2]
 
-        if mean_b < 5 or mean_g < 5 or mean_r < 5:
-            return img
+        # 1. Élimination physique de la contamination proche infrarouge (NIR)
+        # Sur capteur NoIR (OV5647), les colorants noirs absorbent le visible mais réfléchissent le NIR.
+        # Le capteur enregistre alors un excès de Rouge et de Bleu symétrique (R >> G et B >> G).
+        # Dans un vrai feu/flamme, le Rouge est intense mais le Bleu est faible (B << R),
+        # donc min(r - g*0.9, b - g*0.8) est nul -> flammes et alertes 100% préservées !
+        nir_excess = np.maximum(0.0, np.minimum(r - g * 0.9, b - g * 0.8))
 
-        target = (mean_b + mean_g + mean_r) / 3.0
-        # Gains modérés (bornés pour équilibrer blanc et tons chair sans déformation)
-        gain_b = np.clip(target / mean_b, 0.75, 1.35)
-        gain_g = np.clip(target / mean_g, 0.80, 1.25)
-        gain_r = np.clip(target / mean_r, 0.75, 1.35)
+        r_depurpled = np.clip(r - 1.35 * nir_excess, 0, 255)
+        b_depurpled = np.clip(b - 1.35 * nir_excess, 0, 255)
+        g_depurpled = np.clip(g - 0.35 * nir_excess, 0, 255)
 
-        b_out = np.clip(img_f[:, :, 0] * gain_b, 0, 255).astype(np.uint8)
-        g_out = np.clip(img_f[:, :, 1] * gain_g, 0, 255).astype(np.uint8)
-        r_out = np.clip(img_f[:, :, 2] * gain_r, 0, 255).astype(np.uint8)
+        # 2. Balance des blancs adaptative (Gray World)
+        mean_b = float(np.mean(b_depurpled))
+        mean_g = float(np.mean(g_depurpled))
+        mean_r = float(np.mean(r_depurpled))
+
+        if mean_b > 5 and mean_g > 5 and mean_r > 5:
+            target = (mean_b + mean_g + mean_r) / 3.0
+            gain_b = float(np.clip(target / mean_b, 0.80, 1.25))
+            gain_g = float(np.clip(target / mean_g, 0.85, 1.20))
+            gain_r = float(np.clip(target / mean_r, 0.80, 1.25))
+
+            b_out = np.clip(b_depurpled * gain_b, 0, 255).astype(np.uint8)
+            g_out = np.clip(g_depurpled * gain_g, 0, 255).astype(np.uint8)
+            r_out = np.clip(r_depurpled * gain_r, 0, 255).astype(np.uint8)
+        else:
+            b_out = b_depurpled.astype(np.uint8)
+            g_out = g_depurpled.astype(np.uint8)
+            r_out = r_depurpled.astype(np.uint8)
 
         return cv2.merge([b_out, g_out, r_out])
     except Exception:
