@@ -56,6 +56,29 @@ def generate_siren_wav(filename="/tmp/camfire_siren.wav", duration=2.0, sample_r
         print(f"[Alarme] Erreur génération sirène: {e}")
         return False
 
+def get_audio_output_dev() -> Optional[str]:
+    """Détecte la carte Jack 3.5mm (Headphones) ou USB audio et débloque le volume à 100%."""
+    headphone_dev = None
+    try:
+        for cmd in [
+            ["amixer", "sset", "Headphones", "100%", "unmute"],
+            ["amixer", "-c", "0", "sset", "Headphones", "100%", "unmute"],
+            ["amixer", "-c", "1", "sset", "Headphones", "100%", "unmute"],
+            ["amixer", "sset", "Master", "100%", "unmute"],
+        ]:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        if os.path.exists("/proc/asound/cards"):
+            with open("/proc/asound/cards", "r") as f:
+                for line in f:
+                    if "Headphones" in line or "headphone" in line.lower():
+                        card_num = line.strip().split()[0]
+                        headphone_dev = f"plughw:{card_num},0"
+                        break
+    except Exception:
+        pass
+    return headphone_dev
+
 def _alarm_worker(duration_seconds=15):
     global is_alarm_active
     siren_path = "/tmp/camfire_siren.wav"
@@ -66,13 +89,20 @@ def _alarm_worker(duration_seconds=15):
     start_time = time.time()
     is_alarm_active = True
     print(f"\033[1;31m[ALARME] Sirène d'urgence DÉCLENCHÉE sur le Raspberry Pi (durée max: {duration_seconds}s)\033[0m")
-    
+    dev = get_audio_output_dev()
+    if dev:
+        print(f"[AUDIO] Périphérique Jack casque détecté : {dev}")
+
     while not alarm_stop_event.is_set():
         if duration_seconds and (time.time() - start_time) > duration_seconds:
             break
         if player and os.path.exists(siren_path):
             try:
-                proc = subprocess.Popen([player, siren_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                cmd = [player]
+                if dev and "aplay" in player:
+                    cmd.extend(["-D", dev])
+                cmd.append(siren_path)
+                proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 while proc.poll() is None:
                     if alarm_stop_event.is_set():
                         proc.terminate()
@@ -112,18 +142,31 @@ def play_audio_on_speaker(audio_bytes: bytes):
             aplay = shutil.which("aplay")
             mpv = shutil.which("mpv")
             ffmpeg = shutil.which("ffmpeg")
+            dev = get_audio_output_dev()
 
             if ext == ".webm" and ffplay:
                 subprocess.run([ffplay, "-nodisp", "-autoexit", "-loglevel", "quiet", temp_path], timeout=30)
             elif ext == ".webm" and mpv:
-                subprocess.run([mpv, "--no-video", temp_path], timeout=30)
+                cmd = [mpv, "--no-video"]
+                if dev:
+                    cmd.extend([f"--audio-device=alsa/{dev}"])
+                cmd.append(temp_path)
+                subprocess.run(cmd, timeout=30)
             elif ext == ".wav" and aplay:
-                subprocess.run([aplay, "-q", temp_path], timeout=30)
+                cmd = [aplay, "-q"]
+                if dev:
+                    cmd.extend(["-D", dev])
+                cmd.append(temp_path)
+                subprocess.run(cmd, timeout=30)
             elif aplay and ext == ".webm" and ffmpeg:
                 wav_tmp = temp_path + ".wav"
                 subprocess.run([ffmpeg, "-y", "-i", temp_path, wav_tmp], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 if os.path.exists(wav_tmp):
-                    subprocess.run([aplay, "-q", wav_tmp], timeout=30)
+                    cmd = [aplay, "-q"]
+                    if dev:
+                        cmd.extend(["-D", dev])
+                    cmd.append(wav_tmp)
+                    subprocess.run(cmd, timeout=30)
                     try: os.remove(wav_tmp)
                     except Exception: pass
             elif ffplay:
