@@ -9,6 +9,12 @@ export const Auth: React.FC = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
   const [isLogin, setIsLogin] = useState<boolean>(true);
+  const [isForgotStep, setIsForgotStep] = useState<boolean>(false);
+  const [isResetStep, setIsResetStep] = useState<boolean>(false);
+  const [resetEmail, setResetEmail] = useState<string>('');
+  const [resetCode, setResetCode] = useState<string>('');
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState<string>('');
   const [signupStep, setSignupStep] = useState<number>(1);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -206,6 +212,117 @@ export const Auth: React.FC = () => {
     setSuccess(null);
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+        await authService.forgotPassword(resetEmail);
+        setSuccess("Code envoyé ! Vérifiez votre boîte mail.");
+        setIsResetStep(true);
+    } catch (err: any) {
+        setError(err.message || 'Une erreur est survenue.');
+    } finally {
+        setLoading(false);
+    }
+};
+
+const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (newPassword !== confirmNewPassword) {
+        setError("Les mots de passe ne correspondent pas.");
+        return;
+    }
+    setLoading(true);
+    try {
+        await authService.resetPassword(resetEmail, resetCode, newPassword);
+        setSuccess("Mot de passe réinitialisé ! Vous pouvez vous connecter.");
+        setIsForgotStep(false);
+        setIsResetStep(false);
+        setResetEmail(''); setResetCode(''); setNewPassword(''); setConfirmNewPassword('');
+    } catch (err: any) {
+        setError(err.message || 'Code invalide ou expiré.');
+    } finally {
+        setLoading(false);
+    }
+};
+
+
+  // Écran "Mot de passe oublié" — saisie de l'email
+  if (isForgotStep && !isResetStep) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <div style={styles.header}>
+            <div style={styles.logoContainer}>
+              <FlameIcon size={28} />
+            </div>
+            <h1 style={styles.title}>Mot de passe oublié</h1>
+            <p style={styles.subtitle}>Saisissez votre adresse email pour recevoir un code de réinitialisation</p>
+          </div>
+          <form onSubmit={handleForgotPassword} style={styles.form}>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>Adresse Email</label>
+              <input type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} placeholder="votre.nom@adresse.com" required style={styles.input} />
+            </div>
+            {error && <div style={styles.errorBox}>{error}</div>}
+            {success && <div style={styles.successBox}>{success}</div>}
+            <button type="submit" disabled={loading} style={styles.submitBtn}>
+              {loading ? 'Envoi en cours...' : 'Envoyer le code'}
+            </button>
+          </form>
+          <div style={styles.toggleContainer}>
+            <button type="button" onClick={() => { setIsForgotStep(false); setError(null); setSuccess(null); }} style={styles.toggleBtn}>
+              ← Retour à la connexion
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Écran "Réinitialisation" — saisie du code + nouveau mot de passe
+  if (isResetStep) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <div style={styles.header}>
+            <div style={{ ...styles.logoContainer, borderColor: '#00d2ff', backgroundColor: 'rgba(0, 210, 255, 0.1)' }}>
+              <ShieldCheckIcon size={28} style={{ color: '#00d2ff' }} />
+            </div>
+            <h1 style={styles.title}>Nouveau mot de passe</h1>
+            <p style={styles.subtitle}>Saisissez le code reçu par email et votre nouveau mot de passe</p>
+          </div>
+          <form onSubmit={handleResetPassword} style={styles.form}>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>Code de réinitialisation (6 chiffres)</label>
+              <input type="text" value={resetCode} onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" required maxLength={6} style={{ ...styles.input, ...styles.inputMono, textAlign: 'center', fontSize: '20px', letterSpacing: '6px' }} />
+            </div>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>Nouveau mot de passe</label>
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" required style={styles.input} />
+            </div>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>Confirmer le mot de passe</label>
+              <input type="password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} placeholder="••••••••" required style={styles.input} />
+            </div>
+            {error && <div style={styles.errorBox}>{error}</div>}
+            {success && <div style={styles.successBox}>{success}</div>}
+            <button type="submit" disabled={loading || resetCode.length !== 6} style={{ ...styles.submitBtn, background: 'linear-gradient(135deg, #00b4db 0%, #0083b0 100%)' }}>
+              {loading ? 'Réinitialisation...' : 'Réinitialiser le mot de passe'}
+            </button>
+          </form>
+          <div style={styles.toggleContainer}>
+            <button type="button" onClick={() => { setIsResetStep(false); setError(null); setSuccess(null); }} style={styles.toggleBtn}>
+              ← Retour
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Affichage direct de la page de liaison Raspberry Pi dès la validation de l'inscription !
   if (!isLogin && signupStep === 2) {
     return <PairDevice onComplete={() => navigate('/home', { replace: true })} />;
@@ -351,6 +468,18 @@ export const Auth: React.FC = () => {
                 />
               </div>
 
+              {isLogin && (
+                <div style={{ textAlign: 'right', marginTop: '-8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setIsForgotStep(true); setError(null); setSuccess(null); }}
+                    style={{ background: 'none', border: 'none', color: '#71717a', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Mot de passe oublié ?
+                  </button>
+                </div>
+              )}
+
               {!isLogin && (
                 <div style={styles.inputGroup}>
                   <label style={styles.label}>Confirmer le mot de passe</label>
@@ -399,6 +528,7 @@ export const Auth: React.FC = () => {
     </div>
   );
 };
+
 
 // --- DESIGN STYLES (Modern Cyber Dark / Inferno Palette) ---
 const styles: { [key: string]: React.CSSProperties } = {

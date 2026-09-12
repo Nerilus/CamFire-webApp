@@ -291,5 +291,28 @@ export const authService = {
     }
 
     return await response.json();
-  }
+  },
+
+    async forgotPassword(email: string): Promise<void> {
+    const response = await fetch(
+      `${API_URL}/auth/forgot-password?email=${encodeURIComponent(email)}`,
+      { method: 'POST' }
+    );
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail || 'Erreur lors de la demande.');
+    }
+  },
+
+  async resetPassword(email: string, code: string, newPassword: string): Promise<void> {
+    const response = await fetch(
+      `${API_URL}/auth/reset-password?email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}&new_password=${encodeURIComponent(newPassword)}`,
+      { method: 'POST' }
+    );
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail || 'Code invalide ou expiré.');
+    }
+  },
+
 };

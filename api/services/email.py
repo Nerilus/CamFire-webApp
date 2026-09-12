@@ -294,3 +294,45 @@ def send_device_unpaired_email(recipient: str, device_name: str, device_id: str)
         content=content,
     )
     send_email_async("Confirmation de dissociation de votre appareil CamFire", recipient, text, html)
+
+
+def send_reset_password_email(recipient: str, code: str, expire_minutes: int = 30) -> None:
+    """Envoie un code de réinitialisation du mot de passe par e-mail."""
+    print("=" * 60)
+    print(f"[RESET PASSWORD] >>> CODE POUR {recipient} : [{code}] (Expire dans {expire_minutes} min) <<<")
+    print("=" * 60)
+
+    subject = f"CamFire — Code de réinitialisation de mot de passe : {code}"
+    text_body = f"""Bonjour,
+
+Vous avez demandé la réinitialisation de votre mot de passe CamFire.
+
+Votre code de réinitialisation :
+{code}
+
+Ce code est valable pendant {expire_minutes} minutes.
+Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.
+
+L'équipe Sécurité CamFire
+"""
+    content = f"""
+    <div style="margin:24px 0;padding:22px;background:#0d0d12;border:1px dashed #ff4500;border-radius:12px;text-align:center;">
+        <span style="font-family:'Courier New',Courier,monospace;font-size:36px;font-weight:800;letter-spacing:10px;color:#ff5722;display:inline-block;padding-left:10px;">
+            {code}
+        </span>
+        <div style="margin-top:10px;color:#64748b;font-size:12px;">
+            ⏱️ Ce code expire dans <strong>{expire_minutes} minutes</strong>
+        </div>
+    </div>
+    <div style="padding:14px 16px;background:rgba(255,87,34,0.08);border-left:3px solid #ff5722;border-radius:6px;color:#cbd5e1;font-size:13px;line-height:1.5;">
+        🔒 <strong>Important :</strong> Si vous n'avez pas demandé cette réinitialisation, ignorez cet e-mail. Votre mot de passe ne sera pas modifié.
+    </div>
+    """
+    html_body = _email_base_template(
+        eyebrow="Réinitialisation du Mot de Passe",
+        title="Code de réinitialisation",
+        intro=f"Une demande de réinitialisation de mot de passe a été effectuée pour <strong>{escape(recipient)}</strong>. Saisissez ce code pour continuer :",
+        content=content,
+    )
+    send_email_async(subject, recipient, text_body, html_body)
+
