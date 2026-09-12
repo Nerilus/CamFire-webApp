@@ -88,9 +88,10 @@ def detect_stream_url(manual_url: str = None) -> str:
             try:
                 with open(log_path, "r", errors="ignore") as f:
                     content = f.read()
-                    matches = re.findall(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", content)
-                    if matches:
-                        return f"{matches[-1]}/stream.mjpg"
+                    matches = re.findall(r"https://([a-zA-Z0-9-]+)\.trycloudflare\.com", content)
+                    valid = [f"https://{m}.trycloudflare.com/stream.mjpg" for m in matches if m not in ("api", "www")]
+                    if valid:
+                        return valid[-1]
             except Exception:
                 pass
 
@@ -100,7 +101,7 @@ def detect_stream_url(manual_url: str = None) -> str:
             with open("camfire_device.json", "r") as f:
                 data = json.load(f)
                 saved_url = data.get("stream_url")
-                if saved_url and ("trycloudflare.com" in saved_url or "sslip.io" in saved_url):
+                if saved_url and "trycloudflare.com" in saved_url and "api.cloudflare" not in saved_url:
                     return saved_url
         except Exception:
             pass
