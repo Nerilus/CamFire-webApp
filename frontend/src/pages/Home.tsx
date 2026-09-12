@@ -35,6 +35,44 @@ export const Home: React.FC = () => {
   const [sites, setSites] = useState<Site[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
 
+  // Ticket system states
+  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
+  const [isTicketSuccess, setIsTicketSuccess] = useState(false);
+  const [ticketClientName, setTicketClientName] = useState("");
+  const [ticketDescription, setTicketDescription] = useState("");
+  const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
+
+  const submitTicket = async () => {
+    if (!pairedDevice) return;
+    setIsSubmittingTicket(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${apiUrl}/tickets`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          client_name: ticketClientName,
+          description: ticketDescription,
+          device_id: pairedDevice.id
+        })
+      });
+      if (response.ok) {
+        setIsTicketSuccess(true);
+      } else {
+        alert("Erreur lors de l'envoi du ticket.");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Erreur réseau lors de l'envoi du ticket.");
+    } finally {
+      setIsSubmittingTicket(false);
+    }
+  };
+
   useEffect(() => {
     deviceService.getMyDevices()
       .then(devs => {
@@ -542,36 +580,70 @@ export const Home: React.FC = () => {
               </div>
             )}
 
-            <button 
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsVideoModalOpen(true);
-              }}
-              style={{
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                background: 'rgba(15, 23, 42, 0.8)',
-                border: '1px solid rgba(255, 255, 255, 0.25)',
-                color: '#fff',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                fontSize: '11.5px',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                backdropFilter: 'blur(6px)',
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-                transition: 'all 0.2s ease'
-              }}
-              title="Agrandir la vidéo en plein écran"
-            >
-              <MaximizeIcon size={14} />
-              <span>Agrandir</span>
-            </button>
+            <div style={{
+              position: 'absolute',
+              bottom: '12px',
+              right: '12px',
+              display: 'flex',
+              gap: '8px'
+            }}>
+              {(pairedDevice.tamper_status === 'tampered' || pairedDevice.status === 'offline') && (
+                <button 
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsTicketModalOpen(true);
+                  }}
+                  style={{
+                    background: 'rgba(220, 38, 38, 0.9)',
+                    border: '1px solid rgba(255, 255, 255, 0.4)',
+                    color: '#fff',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backdropFilter: 'blur(6px)',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(220,38,38,0.4)',
+                    transition: 'all 0.2s ease'
+                  }}
+                  title="Signaler une panne ou ouvrir un ticket"
+                >
+                  <ShieldAlertIcon size={14} />
+                  <span>Signaler</span>
+                </button>
+              )}
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsVideoModalOpen(true);
+                }}
+                style={{
+                  background: 'rgba(15, 23, 42, 0.8)',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  color: '#fff',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backdropFilter: 'blur(6px)',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                  transition: 'all 0.2s ease'
+                }}
+                title="Agrandir la vidéo en plein écran"
+              >
+                <MaximizeIcon size={14} />
+                <span>Agrandir</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -583,6 +655,86 @@ export const Home: React.FC = () => {
             cameraName={pairedDevice.name}
             statusText="Détection en direct YOLOv8 & v11 active"
           />
+        )}
+
+        {isTicketModalOpen && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.7)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(5px)'
+          }} onClick={() => { setIsTicketModalOpen(false); setIsTicketSuccess(false); setTicketDescription(""); }}>
+            <div style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: '16px', padding: '24px', width: '90%', maxWidth: '400px',
+              color: '#fff'
+            }} onClick={e => e.stopPropagation()}>
+              
+              {isTicketSuccess ? (
+                <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
+                  <h3 style={{ marginTop: 0, marginBottom: '12px' }}>Demande envoyée</h3>
+                  <p style={{ color: 'var(--text-dim)', marginBottom: '24px', fontSize: '14px', lineHeight: '1.5' }}>
+                    Votre demande a bien été soumise. Notre équipe technique a été notifiée et va s'en charger au plus vite.
+                  </p>
+                  <button 
+                    onClick={() => {
+                      setIsTicketModalOpen(false);
+                      setIsTicketSuccess(false);
+                      setTicketDescription("");
+                    }}
+                    style={{ padding: '10px 24px', borderRadius: '8px', background: 'var(--safe)', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 600, width: '100%' }}
+                  >
+                    Compris
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <h3 style={{ marginTop: 0, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ShieldAlertIcon size={20} color="var(--danger)" />
+                    Signaler un problème
+                  </h3>
+                  
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: 'var(--text-dim)' }}>Nom / Société</label>
+                    <input 
+                      type="text" 
+                      value={ticketClientName}
+                      onChange={e => setTicketClientName(e.target.value)}
+                      placeholder="Votre Nom"
+                      style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '24px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '8px', color: 'var(--text-dim)' }}>Description du problème</label>
+                    <textarea 
+                      value={ticketDescription}
+                      onChange={e => setTicketDescription(e.target.value)}
+                      placeholder="Ex: La caméra a été arrachée, elle est déconnectée depuis ce matin..."
+                      style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', color: '#fff', fontSize: '14px', minHeight: '80px', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                    <button 
+                      onClick={() => { setIsTicketModalOpen(false); setIsTicketSuccess(false); setTicketDescription(""); }}
+                      style={{ padding: '10px 16px', borderRadius: '8px', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-dim)', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Annuler
+                    </button>
+                    <button 
+                      onClick={submitTicket}
+                      disabled={isSubmittingTicket || !ticketClientName.trim() || !ticketDescription.trim()}
+                      style={{ padding: '10px 16px', borderRadius: '8px', background: 'var(--danger)', border: 'none', color: '#fff', cursor: isSubmittingTicket ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: isSubmittingTicket || !ticketClientName.trim() || !ticketDescription.trim() ? 0.5 : 1 }}
+                    >
+                      {isSubmittingTicket ? 'Envoi...' : 'Envoyer le ticket'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
 
         {isLoadingForecast ? (
