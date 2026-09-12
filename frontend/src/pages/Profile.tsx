@@ -242,7 +242,12 @@ export const Profile: React.FC = () => {
                     </h3>
                     <span className="device-id-badge">{dev.device_id}</span>
                   </div>
-                  <span className="device-status-badge">● Connecté (Sécurisé)</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <span className={`device-role-badge ${dev.role === 'owner' ? 'role-owner' : 'role-member'}`}>
+                      {dev.role === 'owner' ? '👑 Propriétaire' : '👥 Membre partagé'}
+                    </span>
+                    <span className="device-status-badge">● Connecté (Sécurisé)</span>
+                  </div>
                 </div>
 
                 <div className="device-details-row">

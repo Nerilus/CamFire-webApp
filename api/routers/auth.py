@@ -28,6 +28,7 @@ from services.email import (
     send_login_notification_email,
     send_device_paired_email,
     send_welcome_email,
+    send_owner_secondary_registration_alert_email,
 )
 
 router = APIRouter(
@@ -131,20 +132,58 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
 
     if device:
         custom_name = user_in.device_name.strip() if user_in.device_name else device.name
+
+        # Détermination du rôle (Premier arrivant = owner, suivants = member)
+        existing_owner_ud = db.query(UserDevice).filter(
+            UserDevice.device_id == device.id,
+            UserDevice.role == "owner"
+        ).first()
+        existing_members_count = db.query(UserDevice).filter(UserDevice.device_id == device.id).count()
+
+        is_first_owner = (existing_members_count == 0 or not existing_owner_ud)
+        assigned_role = "owner" if is_first_owner else "member"
+        owner_user = existing_owner_ud.user if existing_owner_ud else None
+
         new_ud = UserDevice(
             user_id=new_user.id,
             device_id=device.id,
             custom_name=custom_name,
+            role=assigned_role,
             paired_at=datetime.utcnow()
         )
         db.add(new_ud)
         device.is_paired = True
+        if is_first_owner:
+            device.user_id = new_user.id
+            device.paired_at = datetime.utcnow()
         db.commit()
         db.refresh(new_user)
 
     send_welcome_email(new_user.email)
     if device:
-        send_device_paired_email(new_user.email, custom_name, device.device_id)
+        if assigned_role == "member" and owner_user:
+            new_member_name = f"{new_user.firstname or ''} {new_user.lastname or ''}".strip() or None
+            send_owner_secondary_registration_alert_email(
+                owner_email=owner_user.email,
+                device_name=device.name,
+                device_id=device.device_id,
+                new_member_email=new_user.email,
+                new_member_name=new_member_name
+            )
+            send_device_paired_email(
+                recipient=new_user.email,
+                device_name=custom_name,
+                device_id=device.device_id,
+                role="member",
+                owner_email=owner_user.email
+            )
+        else:
+            send_device_paired_email(
+                recipient=new_user.email,
+                device_name=custom_name,
+                device_id=device.device_id,
+                role="owner"
+            )
 
     return new_user
 

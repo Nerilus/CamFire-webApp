@@ -256,24 +256,116 @@ def send_welcome_email(recipient: str) -> None:
     send_email_async("Bienvenue chez CamFire", recipient, text, html)
 
 
-def send_device_paired_email(recipient: str, device_name: str, device_id: str) -> None:
-    """Envoie un e-mail confirmant l'association d'un appareil."""
+def send_device_paired_email(
+    recipient: str,
+    device_name: str,
+    device_id: str,
+    role: str = "owner",
+    owner_email: Optional[str] = None
+) -> None:
+    """Envoie un e-mail confirmant l'association d'un appareil (en tant que propriétaire ou membre)."""
+    is_owner = (role == "owner")
+    role_label = "Propriétaire" if is_owner else "Membre partagé"
+
+    print(f"[DEVICE PAIRED] E-mail envoyé à {recipient} pour l'appareil {device_name} ({device_id}) en tant que {role_label}")
+
+    if is_owner:
+        subject = f"CamFire — Confirmation d'association de votre Raspberry Pi ({device_name})"
+        intro = "L'association de votre équipement a bien été confirmée. Vous êtes enregistré comme <strong>propriétaire</strong> de cet équipement :"
+        role_desc = "Vous disposez des droits d'administration complets (gestion des membres, configuration et streaming)."
+    else:
+        subject = f"CamFire — Accès membre accordé à l'appareil {device_name}"
+        owner_info = f" appartenant à {owner_email}" if owner_email else ""
+        intro = f"Vous êtes désormais associé à l'équipement <strong>{escape(device_name)}</strong>{escape(owner_info)} en tant que <strong>membre</strong> :"
+        role_desc = "Vous avez accès au flux vidéo en direct et aux alertes de détection de cet équipement."
+
     text = (
         f"Bonjour,\n\n"
-        f"L'appareil {device_name} ({device_id}) est désormais associé à votre compte CamFire.\n\n"
+        f"L'appareil {device_name} ({device_id}) est désormais associé à votre compte CamFire avec le rôle : {role_label}.\n\n"
+        f"{role_desc}\n\n"
         "L'équipe CamFire"
     )
+    rows = [
+        ("Nom de l'appareil", device_name),
+        ("Identifiant matériel", device_id),
+        ("Votre rôle", role_label),
+    ]
+    if not is_owner and owner_email:
+        rows.append(("Propriétaire", owner_email))
+
     content = (
-        _detail_card([("Nom de l'appareil", device_name), ("Identifiant matériel", device_id)])
-        + '<p style="margin:20px 0 0;color:#94a3b8;font-size:14px;line-height:1.6;">Vous pouvez désormais retrouver son flux vidéo en direct, ses alertes et son état depuis votre espace CamFire.</p>'
+        _detail_card(rows)
+        + f'<p style="margin:20px 0 0;color:#94a3b8;font-size:14px;line-height:1.6;">{role_desc}</p>'
     )
     html = _email_base_template(
         eyebrow="Équipement Connecté",
         title="Votre appareil est prêt",
-        intro="L'association de votre équipement a bien été confirmée :",
+        intro=intro,
         content=content,
     )
-    send_email_async("Confirmation d'association de votre appareil CamFire", recipient, text, html)
+    send_email_async(subject, recipient, text, html)
+
+
+def send_owner_secondary_registration_alert_email(
+    owner_email: str,
+    device_name: str,
+    device_id: str,
+    new_member_email: str,
+    new_member_name: Optional[str] = None
+) -> None:
+    """
+    Envoie un e-mail d'alerte de sécurité au propriétaire d'un Raspberry Pi lorsqu'un autre
+    compte utilisateur associe cet équipement en tant que membre.
+    """
+    now_str = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
+    member_display = f"{new_member_name} ({new_member_email})" if new_member_name else new_member_email
+
+    print("=" * 60)
+    print(f"[DEVICE SECURITY ALERT] Notification Propriétaire : {owner_email}")
+    print(f"  Appareil : {device_name} [{device_id}]")
+    print(f"  Nouvel utilisateur associé : {member_display}")
+    print("=" * 60)
+
+    subject = f"CamFire — Alerte Sécurité : Nouvel utilisateur associé à votre Raspberry Pi ({device_name})"
+    text_body = f"""Bonjour,
+
+Un nouveau compte utilisateur vient d'associer votre équipement Raspberry Pi à son espace CamFire.
+
+Détails de l'association :
+- Nom de l'équipement : {device_name}
+- Identifiant matériel : {device_id}
+- Utilisateur associé : {member_display}
+- Rôle attribué : Membre (Accès partagé)
+- Date et heure : {now_str}
+
+Vous restez le propriétaire officiel de cet équipement.
+Si vous avez partagé votre code secret avec cette personne, aucune action n'est requise.
+Si vous ne reconnaissez pas cette personne ou suspectez une utilisation non autorisée, vous pouvez révoquer cet accès immédiatement depuis votre profil CamFire ou régénérer un nouveau code secret d'appairage.
+
+L'équipe Sécurité CamFire
+"""
+    rows = [
+        ("Nom de l'équipement", device_name),
+        ("Identifiant matériel", device_id),
+        ("Utilisateur associé", member_display),
+        ("Rôle attribué", "Membre (Accès partagé)"),
+        ("Date et heure", now_str),
+    ]
+    content = (
+        _detail_card(rows)
+        + """
+        <div style="margin-top:20px;padding:14px 16px;background:rgba(255,165,0,0.1);border-left:3px solid #ff9800;border-radius:6px;color:#cbd5e1;font-size:13px;line-height:1.5;">
+            🛡️ <strong>Contrôle d'accès :</strong> En tant que propriétaire, vous conservez l'autorité exclusive sur cet équipement. Vous pouvez révoquer ce membre à tout moment dans la section <em>Gestion des membres</em> ou régénérer le code secret PIN.
+        </div>
+        """
+    )
+    html_body = _email_base_template(
+        eyebrow="Sécurité Équipement",
+        title="Nouvel utilisateur associé",
+        intro=f"Un utilisateur vient d'enregistrer votre équipement <strong>{escape(device_name)}</strong> en tant que membre :",
+        content=content,
+    )
+    send_email_async(subject, owner_email, text_body, html_body)
 
 
 def send_device_unpaired_email(recipient: str, device_name: str, device_id: str) -> None:

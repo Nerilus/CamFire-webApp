@@ -13,7 +13,11 @@ import jwt
 
 from db.database import get_db
 from db.models import User, Device, UserDevice
-from services.email import send_device_paired_email, send_device_unpaired_email
+from services.email import (
+    send_device_paired_email,
+    send_device_unpaired_email,
+    send_owner_secondary_registration_alert_email,
+)
 from schemas.device_schema import (
     DevicePairRequest,
     DeviceResponse,
@@ -417,8 +421,15 @@ def pair_device(
         )
 
     # 5. Détermination du rôle (Premier arrivant = owner, suivants = member)
+    existing_owner_ud = db.query(UserDevice).filter(
+        UserDevice.device_id == device.id,
+        UserDevice.role == "owner"
+    ).first()
     existing_members_count = db.query(UserDevice).filter(UserDevice.device_id == device.id).count()
-    assigned_role = "owner" if existing_members_count == 0 else "member"
+
+    is_first_owner = (existing_members_count == 0 or not existing_owner_ud)
+    assigned_role = "owner" if is_first_owner else "member"
+    owner_user = existing_owner_ud.user if existing_owner_ud else None
 
     custom_name = pair_in.name.strip() if pair_in.name else device.name
     new_ud = UserDevice(
@@ -430,9 +441,38 @@ def pair_device(
     )
     db.add(new_ud)
     device.is_paired = True
+    if is_first_owner:
+        device.user_id = current_user.id
+        device.paired_at = datetime.utcnow()
     db.commit()
 
-    send_device_paired_email(current_user.email, custom_name, device.device_id)
+    # Envoi des notifications e-mail
+    if assigned_role == "member" and owner_user:
+        # Alerte de sécurité envoyée au propriétaire légitime de l'équipement
+        new_member_name = f"{current_user.firstname or ''} {current_user.lastname or ''}".strip() or None
+        send_owner_secondary_registration_alert_email(
+            owner_email=owner_user.email,
+            device_name=device.name,
+            device_id=device.device_id,
+            new_member_email=current_user.email,
+            new_member_name=new_member_name
+        )
+        # Confirmation au compte membre
+        send_device_paired_email(
+            recipient=current_user.email,
+            device_name=custom_name,
+            device_id=device.device_id,
+            role="member",
+            owner_email=owner_user.email
+        )
+    else:
+        # Confirmation au compte propriétaire
+        send_device_paired_email(
+            recipient=current_user.email,
+            device_name=custom_name,
+            device_id=device.device_id,
+            role="owner"
+        )
 
     return DeviceResponse(
         id=device.id,
@@ -530,9 +570,11 @@ def unpair_device(
     remaining_uds = db.query(UserDevice).filter(UserDevice.device_id == device.id).order_by(UserDevice.paired_at.asc()).all()
     if len(remaining_uds) == 0:
         device.is_paired = False
+        device.user_id = None
     elif was_owner:
         # Transfert automatique de l'autorité au membre le plus ancien
         remaining_uds[0].role = "owner"
+        device.user_id = remaining_uds[0].user_id
 
     db.commit()
     send_device_unpaired_email(current_user.email, ud.custom_name or device.name, device.device_id)
