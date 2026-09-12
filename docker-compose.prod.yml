@@ -24,6 +24,9 @@ services:
     container_name: camfire-backend
     command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
     restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-camfire_user}:${POSTGRES_PASSWORD:-camfire_secure_pass_2026}@db:5432/${POSTGRES_DB:-camfire_prod_db}
       - SECRET_KEY=${SECRET_KEY:-votre_cle_secrete_ultra_securisee_a_definir_dans_env}
