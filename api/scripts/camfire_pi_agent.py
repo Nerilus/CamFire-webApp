@@ -82,7 +82,13 @@ def is_local_camera_running(port: int = 8080) -> bool:
     except Exception:
         return False
 
-def ensure_local_camera_stream(port: int = 8080, fps: int = 30) -> bool:
+def ensure_local_camera_stream(
+    port: int = 8080, 
+    fps: int = 30, 
+    awb: str = "indoor", 
+    red_gain: Optional[float] = None, 
+    blue_gain: Optional[float] = None
+) -> bool:
     """
     Assure que le flux caméra Picamera2 tourne en local sur le port 8080.
     Si non actif, télécharge la dernière version de stream_pi.py et la lance en arrière-plan.
@@ -92,16 +98,16 @@ def ensure_local_camera_stream(port: int = 8080, fps: int = 30) -> bool:
 
     print(f"    • [Caméra] Flux local inactif sur le port {port}. Démarrage automatique...")
 
-    # Télécharger la dernière version de stream_pi.py depuis GitHub
+    # Télécharger la dernière version de stream_pi.py depuis GitHub avec cache busting
     script_path = "stream_pi.py"
     try:
-        url = "https://raw.githubusercontent.com/Nerilus/CamFire-webApp/main/api/scripts/stream_pi.py"
+        url = f"https://raw.githubusercontent.com/Nerilus/CamFire-webApp/main/api/scripts/stream_pi.py?v={int(time.time())}"
         req = urllib.request.Request(url, headers={"User-Agent": "CamFire-Agent/1.0"})
         with urllib.request.urlopen(req, timeout=5, context=ssl_context) as resp:
             content = resp.read().decode('utf-8')
             with open(script_path, "w") as f:
                 f.write(content)
-    except Exception as e:
+    except Exception:
         pass
 
     # Libérer tout ancien processus bloquant la caméra
@@ -118,7 +124,12 @@ def ensure_local_camera_stream(port: int = 8080, fps: int = 30) -> bool:
     except Exception:
         f_log = subprocess.DEVNULL
 
-    cmd = [sys.executable, script_path, "--fps", str(fps), "--noir", "--red-gain", "0.70", "--blue-gain", "1.35", "--port", str(port)]
+    cmd = [sys.executable, script_path, "--fps", str(fps), "--noir", "--port", str(port)]
+    if red_gain is not None and blue_gain is not None:
+        cmd.extend(["--red-gain", str(red_gain), "--blue-gain", str(blue_gain)])
+    elif awb:
+        cmd.extend(["--awb", str(awb)])
+
     try:
         subprocess.Popen(
             cmd,
@@ -134,7 +145,8 @@ def ensure_local_camera_stream(port: int = 8080, fps: int = 30) -> bool:
     for _ in range(12):
         time.sleep(0.5)
         if is_local_camera_running(port):
-            print(f"    • [Caméra] Caméra initialisée : \033[1;32mhttp://127.0.0.1:{port}/stream.mjpg\033[0m ({fps} FPS, NoIR)")
+            awb_info = f"Gains ({red_gain}/{blue_gain})" if (red_gain and blue_gain) else f"AWB: {awb}"
+            print(f"    • [Caméra] Caméra initialisée : \033[1;32mhttp://127.0.0.1:{port}/stream.mjpg\033[0m ({fps} FPS, {awb_info})")
             return True
 
     print("    • [Caméra] La caméra est en cours d'initialisation (logs dans /tmp/camfire_camera.log)")
@@ -348,14 +360,14 @@ def send_heartbeat(hw_id: str, server_url: str, provision_key: str, stream_url: 
     except Exception:
         return False
 
-def heartbeat_worker_loop(hw_id: str, server_url: str, provision_key: str, get_stream_fn):
+def heartbeat_worker_loop(hw_id: str, server_url: str, provision_key: str, get_stream_fn, awb: str = "indoor", red_gain: Optional[float] = None, blue_gain: Optional[float] = None):
     """Boucle perpétuelle d'émission du Dead Man's Switch (toutes les 15s)."""
     current_stream = get_stream_fn()
     while True:
         # Supervision de la caméra locale
         if not is_local_camera_running(8080):
             print("\033[1;33m[Caméra] Flux local interrompu. Relance automatique...\033[0m")
-            ensure_local_camera_stream(8080, fps=30)
+            ensure_local_camera_stream(8080, fps=30, awb=awb, red_gain=red_gain, blue_gain=blue_gain)
 
         # Si le flux public n'est pas encore actif, ré-essayer de détecter l'URL
         if not current_stream or "trycloudflare.com" not in current_stream:
@@ -385,6 +397,9 @@ def main():
     parser.add_argument("--tunnel-url", default=None, help="URL publique du tunnel Cloudflare (ex: https://xxx.trycloudflare.com)")
     parser.add_argument("--key", default=os.getenv("DEVICE_PROVISION_KEY", DEFAULT_PROVISION_KEY), help="Clé d'usine de provisioning")
     parser.add_argument("--fps", type=int, default=30, help="Framerate de la caméra (défaut: 30)")
+    parser.add_argument("--awb", default="indoor", choices=["auto", "incandescent", "tungsten", "indoor", "daylight", "cloudy"], help="Mode de balance des blancs (défaut: indoor pour neutraliser le rose NoIR)")
+    parser.add_argument("--red-gain", type=float, default=None, help="Gain manuel rouge (optionnel)")
+    parser.add_argument("--blue-gain", type=float, default=None, help="Gain manuel bleu (optionnel)")
     args = parser.parse_args()
 
     print_banner()
@@ -399,7 +414,13 @@ def main():
     print(f"    • Serveur Cible CamFire          : \033[1;34m{args.server}\033[0m")
 
     # 1. Démarrer automatiquement la caméra en local si besoin
-    ensure_local_camera_stream(port=8080, fps=args.fps)
+    ensure_local_camera_stream(
+        port=8080, 
+        fps=args.fps, 
+        awb=args.awb, 
+        red_gain=args.red_gain, 
+        blue_gain=args.blue_gain
+    )
 
     # 2. Démarrer / superviser le tunnel Cloudflare
     is_remote = not ("localhost" in args.server or "127.0.0.1" in args.server)
@@ -463,7 +484,15 @@ def main():
     print("    • Appuyez sur Ctrl+C pour interrompre l'agent.\n")
 
     try:
-        heartbeat_worker_loop(hw_id, args.server, args.key, lambda: detect_stream_url(args.tunnel_url, is_remote=is_remote))
+        heartbeat_worker_loop(
+            hw_id, 
+            args.server, 
+            args.key, 
+            lambda: detect_stream_url(args.tunnel_url, is_remote=is_remote),
+            awb=args.awb,
+            red_gain=args.red_gain,
+            blue_gain=args.blue_gain
+        )
     except KeyboardInterrupt:
         print("\n[Arrêt] Agent CamFire arrêté par l'utilisateur.")
 

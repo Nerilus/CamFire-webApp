@@ -461,10 +461,11 @@ def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
         if current_url and current_url.startswith("tcp/h264://"):
             current_url = "tcp://" + current_url[len("tcp/h264://"):]
 
-        # Si l'URL HTTP pointe vers la racine d'un serveur caméra (ex: :8080), basculer vers stream.mjpg
+        # Si l'URL HTTP pointe vers la racine d'un serveur caméra ou d'un tunnel Cloudflare, basculer vers /stream.mjpg
         if current_url and (current_url.startswith("http://") or current_url.startswith("https://")):
-            if current_url.rstrip("/").endswith(":8080"):
-                current_url = current_url.rstrip("/") + "/stream.mjpg"
+            clean_url = current_url.rstrip("/")
+            if clean_url.endswith(":8080") or ("trycloudflare.com" in clean_url and not clean_url.endswith(".mjpg")):
+                current_url = clean_url + "/stream.mjpg"
 
         cap = None
         try:
@@ -529,8 +530,9 @@ def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
             error_img = np.zeros((480, 640, 3), dtype=np.uint8)
             cv2.putText(error_img, "CAMFIRE - EN ATTENTE DU FLUX", (40, 180), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 165, 255), 2, cv2.LINE_AA)
-            cv2.putText(error_img, f"Cible: {camera_url}", (40, 230), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
+            display_url = (camera_url[:48] + "...") if len(str(camera_url)) > 48 else str(camera_url)
+            cv2.putText(error_img, f"Cible: {display_url}", (40, 230), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1, cv2.LINE_AA)
             cv2.putText(error_img, "En attente du demarrage du stream sur le Pi...", (40, 270), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (120, 220, 120), 1, cv2.LINE_AA)
             cv2.putText(error_img, f"Statut: {str(e)[:48]}", (40, 320), 
