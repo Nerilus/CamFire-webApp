@@ -202,7 +202,7 @@ def ensure_cloudflared_tunnel(local_port: int = 8080) -> Optional[str]:
     except Exception:
         log_file = subprocess.DEVNULL
 
-    cmd = [cloudflared_bin, "tunnel", "--url", f"http://127.0.0.1:{local_port}"]
+    cmd = [cloudflared_bin, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{local_port}"]
     try:
         subprocess.Popen(
             cmd,
@@ -214,15 +214,25 @@ def ensure_cloudflared_tunnel(local_port: int = 8080) -> Optional[str]:
         print(f"    • [Tunnel] Erreur au démarrage de cloudflared: {e}")
         return None
 
-    # 3. Attendre la publication de la nouvelle URL dans le log (jusqu'à 15 secondes)
-    for _ in range(30):
+    # 3. Attendre la publication de la nouvelle URL dans le log (jusqu'à 35 secondes)
+    for i in range(70):
         time.sleep(0.5)
         detected_url = extract_tunnel_url_from_log(log_path)
         if detected_url:
             print(f"    • [Tunnel] Tunnel établi : \033[1;32m{detected_url}\033[0m")
             return detected_url
+        if i > 0 and i % 10 == 0:
+            print(f"    • [Tunnel] Connexion au réseau Cloudflare en cours... ({i // 2}s)")
 
     print("    • [Tunnel] Délai d'attente dépassé pour la détection de l'URL Cloudflare.")
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, "r", errors="ignore") as f:
+                recent_lines = [l.strip() for l in f.readlines() if l.strip()]
+                if recent_lines:
+                    print("    • [Détail Log Cloudflare] " + " | ".join(recent_lines[-2:]))
+        except Exception:
+            pass
     return None
 
 _cached_stream_url = None
@@ -249,10 +259,10 @@ def detect_stream_url(manual_url: str = None) -> str:
         _cached_stream_url = tunnel_url
         return tunnel_url
 
-    if _cached_stream_url:
+    if _cached_stream_url and "trycloudflare.com" in _cached_stream_url:
         return _cached_stream_url
 
-    # Fallback IP locale
+    # Fallback IP locale temporaire (sans empoisonner le cache)
     ip = get_local_ip()
     return f"http://{ip}:8080/stream.mjpg"
 
@@ -305,6 +315,13 @@ def heartbeat_worker_loop(hw_id: str, server_url: str, provision_key: str, get_s
         if not is_local_camera_running(8080):
             print("\033[1;33m[Caméra] Flux local interrompu. Relance automatique...\033[0m")
             ensure_local_camera_stream(8080, fps=30)
+
+        # Si le flux est encore l'IP locale, vérifier si le tunnel Cloudflare est désormais prêt
+        if "trycloudflare.com" not in current_stream:
+            discovered_url = extract_tunnel_url_from_log()
+            if discovered_url:
+                print(f"\033[1;32m[Tunnel] Tunnel Cloudflare désormais opérationnel : {discovered_url}\033[0m")
+                current_stream = discovered_url
 
         # Supervision du tunnel Cloudflare
         if not is_cloudflared_running():
