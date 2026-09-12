@@ -250,16 +250,30 @@ def ensure_cloudflared_tunnel(local_port: int = 8080) -> Optional[str]:
     if os.path.exists(log_path):
         try:
             with open(log_path, "r", errors="ignore") as f:
-                recent_lines = [l.strip() for l in f.readlines() if l.strip()]
-                if recent_lines:
-                    print("    • [Détail Log Cloudflare] " + " | ".join(recent_lines[-2:]))
+                content = f.read()
+                if "429" in content or "1015" in content:
+                    print("\n" + "=" * 65)
+                    print("  \033[1;31m[CLOUDFLARE] ERREUR 429 - LIMITE DE REQUÊTES ATTEINTE (CODE 1015)\033[0m")
+                    print("  Cloudflare a temporairement bloqué les créations de tunnels")
+                    print("  pour votre IP publique suite à plusieurs requêtes consécutives.")
+                    print("\n  \033[1;32m-> SOLUTION RAPIDE (10 secondes) :\033[0m")
+                    print("     Puisque vous êtes en partage de connexion (172.20.10.x),")
+                    print("     activez le Mode Avion sur votre téléphone pendant 5 secondes,")
+                    print("     puis désactivez-le pour obtenir une NOUVELLE adresse IP 4G !")
+                    print("     Relancez ensuite l'agent : Cloudflare fonctionnera immédiatement.")
+                    print("\n  \033[1;33m-> OU patientez 5 à 10 minutes sans solliciter Cloudflare.\033[0m")
+                    print("=" * 65 + "\n")
+                else:
+                    lines = [l.strip() for l in content.splitlines() if l.strip()]
+                    if lines:
+                        print("    • [Détail Log Cloudflare] " + " | ".join(lines[-2:]))
         except Exception:
             pass
     return None
 
 _cached_stream_url = None
 
-def detect_stream_url(manual_url: str = None) -> str:
+def detect_stream_url(manual_url: str = None, is_remote: bool = True) -> Optional[str]:
     """Détecte l'URL de streaming externe (Cloudflare Tunnel) ou locale."""
     global _cached_stream_url
     if manual_url and manual_url.strip():
@@ -284,7 +298,11 @@ def detect_stream_url(manual_url: str = None) -> str:
     if _cached_stream_url and "trycloudflare.com" in _cached_stream_url:
         return _cached_stream_url
 
-    # Fallback IP locale temporaire (sans empoisonner le cache)
+    # Pour un serveur distant de production, NE JAMAIS envoyer d'IP locale privée (172.20.x, 192.168.x)
+    if is_remote:
+        return None
+
+    # Fallback IP locale uniquement pour du dev 100% localhost
     ip = get_local_ip()
     return f"http://{ip}:8080/stream.mjpg"
 
@@ -299,7 +317,7 @@ def print_banner():
     print("    Surveillance Incendie & Sécurité Anti-Sabotage Active")
     print("=" * 65)
 
-def send_heartbeat(hw_id: str, server_url: str, provision_key: str, stream_url: str) -> bool:
+def send_heartbeat(hw_id: str, server_url: str, provision_key: str, stream_url: Optional[str]) -> bool:
     """Envoie un battement de coeur unitaire sécurisé."""
     now = time.time()
     nonce = secrets.token_hex(8)
@@ -314,9 +332,10 @@ def send_heartbeat(hw_id: str, server_url: str, provision_key: str, stream_url: 
         "nonce": nonce,
         "cpu_temp": cpu_temp,
         "tamper_detected": tamper_detected,
-        "signature": sig,
-        "stream_url": stream_url
+        "signature": sig
     }
+    if stream_url and stream_url.strip():
+        data["stream_url"] = stream_url.strip()
 
     req = urllib.request.Request(
         f"{server_url}/devices/{hw_id}/heartbeat",
@@ -338,8 +357,8 @@ def heartbeat_worker_loop(hw_id: str, server_url: str, provision_key: str, get_s
             print("\033[1;33m[Caméra] Flux local interrompu. Relance automatique...\033[0m")
             ensure_local_camera_stream(8080, fps=30)
 
-        # Si le flux est encore l'IP locale, vérifier si le tunnel Cloudflare est désormais prêt
-        if "trycloudflare.com" not in current_stream:
+        # Si le flux public n'est pas encore actif, ré-essayer de détecter l'URL
+        if not current_stream or "trycloudflare.com" not in current_stream:
             discovered_url = extract_tunnel_url_from_log()
             if discovered_url:
                 print(f"\033[1;32m[Tunnel] Tunnel Cloudflare désormais opérationnel : {discovered_url}\033[0m")
@@ -355,8 +374,9 @@ def heartbeat_worker_loop(hw_id: str, server_url: str, provision_key: str, get_s
         temp = get_cpu_temperature()
         ok = send_heartbeat(hw_id, server_url, provision_key, current_stream)
         status_msg = "\033[1;32mEN LIGNE (200 OK)\033[0m" if ok else "\033[1;31mÉCHEC TRANSMISSION\033[0m"
+        stream_display = current_stream if current_stream else "\033[1;33mEn attente de tunnel public (Erreur 429)\033[0m"
         now_str = time.strftime("%H:%M:%S")
-        print(f"[{now_str}] Heartbeat -> {server_url} | {status_msg} | CPU: {temp}°C | Flux: {current_stream}")
+        print(f"[{now_str}] Heartbeat -> {server_url} | {status_msg} | CPU: {temp}°C | Flux: {stream_display}")
         time.sleep(15)
 
 def main():
@@ -382,8 +402,10 @@ def main():
     ensure_local_camera_stream(port=8080, fps=args.fps)
 
     # 2. Démarrer / superviser le tunnel Cloudflare
-    stream_url = detect_stream_url(args.tunnel_url)
-    print(f"    • Flux Vidéo Sélectionné         : \033[1;36m{stream_url}\033[0m")
+    is_remote = not ("localhost" in args.server or "127.0.0.1" in args.server)
+    stream_url = detect_stream_url(args.tunnel_url, is_remote=is_remote)
+    display_stream = stream_url if stream_url else "\033[1;33mEn attente de tunnel public Cloudflare (Erreur 429)\033[0m"
+    print(f"    • Flux Vidéo Sélectionné         : \033[1;36m{display_stream}\033[0m")
 
     # Lecture ou création du code d'appairage local
     config_file = "camfire_device.json"
@@ -413,21 +435,24 @@ def main():
 
     # Provisioning auprès du serveur CamFire
     try:
+        provision_payload = {
+            "device_id": hw_id,
+            "pairing_code": pairing_code,
+            "name": "Caméra Raspberry Pi 4"
+        }
+        if stream_url:
+            provision_payload["stream_url"] = stream_url
+
         req = urllib.request.Request(
             f"{args.server}/devices/provision",
-            data=json.dumps({
-                "device_id": hw_id,
-                "pairing_code": pairing_code,
-                "stream_url": stream_url,
-                "name": "Caméra Raspberry Pi 4"
-            }).encode('utf-8'),
+            data=json.dumps(provision_payload).encode('utf-8'),
             headers={
                 "Content-Type": "application/json",
                 "X-Device-Provision-Key": args.key
             }
         )
         with urllib.request.urlopen(req, timeout=6, context=ssl_context) as resp:
-            print(f"    • Synchronisation Serveur        : \033[1;32mSuccès (Enregistré & Stream mis à jour)\033[0m")
+            print(f"    • Synchronisation Serveur        : \033[1;32mSuccès (Enregistré)\033[0m")
     except Exception as e:
         print(f"    • Synchronisation Serveur        : Attention ({e})")
 
@@ -438,7 +463,7 @@ def main():
     print("    • Appuyez sur Ctrl+C pour interrompre l'agent.\n")
 
     try:
-        heartbeat_worker_loop(hw_id, args.server, args.key, lambda: detect_stream_url(args.tunnel_url))
+        heartbeat_worker_loop(hw_id, args.server, args.key, lambda: detect_stream_url(args.tunnel_url, is_remote=is_remote))
     except KeyboardInterrupt:
         print("\n[Arrêt] Agent CamFire arrêté par l'utilisateur.")
 
