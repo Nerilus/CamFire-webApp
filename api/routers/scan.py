@@ -28,8 +28,9 @@ async def stream_camera(
             detail="Accès interdit : aucun appareil n'est connecté à votre compte."
         )
     target_url = user_device.device.stream_url or CAMERA_URL
+    device_id = user_device.device.device_id if user_device.device else None
     return StreamingResponse(
-        generate_video_stream(target_url),
+        generate_video_stream(target_url, device_id=device_id),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 

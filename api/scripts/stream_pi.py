@@ -20,6 +20,9 @@ from picamera2 import Picamera2
 from picamera2.encoders import JpegEncoder
 from picamera2.outputs import FileOutput
 
+picam2 = None
+active_controls = {}
+
 class StreamingOutput(io.BufferedIOBase):
     def __init__(self):
         self.frame = None
@@ -32,11 +35,78 @@ class StreamingOutput(io.BufferedIOBase):
                 self.condition.notify_all()
 
 class StreamingHandler(server.BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        if self.path in ('/', '/stream.mjpg'):
+            self.send_response(200)
+            self.send_header('Age', '0')
+            self.send_header('Cache-Control', 'no-cache, private')
+            self.send_header('Pragma', 'no-cache')
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
+            self.end_headers()
+        elif self.path.startswith('/control'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+        else:
+            self.send_error(404)
+            self.end_headers()
+
     def do_GET(self):
+        global picam2, active_controls
         if self.path == '/':
             self.send_response(301)
             self.send_header('Location', '/stream.mjpg')
             self.end_headers()
+        elif self.path.startswith('/control'):
+            import urllib.parse
+            import json
+            parsed = urllib.parse.urlparse(self.path)
+            params = urllib.parse.parse_qs(parsed.query)
+            updates = {}
+            if 'red' in params and 'blue' in params:
+                try:
+                    r = float(params['red'][0])
+                    b = float(params['blue'][0])
+                    updates["AwbEnable"] = False
+                    updates["ColourGains"] = (r, b)
+                except Exception:
+                    pass
+            elif 'awb' in params:
+                awb_name = params['awb'][0].lower()
+                awb_dict = {
+                    "auto": 0, "incandescent": 1, "tungsten": 2,
+                    "fluorescent": 3, "indoor": 4, "daylight": 5, "cloudy": 6
+                }
+                if awb_name in awb_dict:
+                    updates["AwbEnable"] = True
+                    updates["AwbMode"] = awb_dict[awb_name]
+            if 'saturation' in params:
+                try:
+                    updates["Saturation"] = float(params['saturation'][0])
+                except Exception:
+                    pass
+
+            applied = {}
+            if picam2 and updates:
+                try:
+                    picam2.set_controls(updates)
+                    active_controls.update(updates)
+                    applied = updates
+                    print(f"[Contrôles Caméra] Nouveaux réglages appliqués : {updates}")
+                except Exception as e:
+                    print(f"[Contrôles Caméra] Erreur application réglages : {e}")
+
+            resp_data = json.dumps({
+                "status": "ok",
+                "applied": applied,
+                "current": {k: (list(v) if isinstance(v, tuple) else v) for k, v in active_controls.items()}
+            }).encode('utf-8')
+
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(resp_data)))
+            self.end_headers()
+            self.wfile.write(resp_data)
         elif self.path == '/stream.mjpg':
             self.send_response(200)
             self.send_header('Age', '0')
@@ -71,16 +141,17 @@ class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
         self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
 def main():
-    global output
+    global output, picam2, active_controls
     parser = argparse.ArgumentParser(description="CamFire - Serveur de flux Picamera2")
     parser.add_argument("--fps", type=int, default=30, help="Nombre d'images par seconde (défaut: 30)")
     parser.add_argument("--quality", type=int, default=65, help="Qualité JPEG de 1 à 100 (défaut: 65 pour fluidité max)")
     parser.add_argument("--width", type=int, default=640, help="Largeur en pixels (défaut: 640)")
     parser.add_argument("--height", type=int, default=480, help="Hauteur en pixels (défaut: 480)")
-    parser.add_argument("--noir", action="store_true", default=True, help="Active l'étalonnage des couleurs pour caméra NoIR (anti-rose)")
-    parser.add_argument("--awb", default="incandescent", choices=["auto", "incandescent", "tungsten", "indoor", "daylight", "cloudy"], help="Mode de balance des blancs (défaut: incandescent pour neutraliser le rose NoIR)")
-    parser.add_argument("--red-gain", type=float, default=None, help="Gain manuel rouge (ex: 0.75 pour atténuer le rose)")
-    parser.add_argument("--blue-gain", type=float, default=None, help="Gain manuel bleu (ex: 1.4)")
+    parser.add_argument("--noir", action="store_true", default=True, help="Active l'étalonnage des couleurs pour caméra NoIR")
+    parser.add_argument("--awb", default="indoor", choices=["auto", "incandescent", "tungsten", "indoor", "daylight", "cloudy"], help="Mode de balance des blancs (défaut: indoor pour neutraliser le rose NoIR)")
+    parser.add_argument("--red-gain", type=float, default=None, help="Gain manuel rouge (optionnel)")
+    parser.add_argument("--blue-gain", type=float, default=None, help="Gain manuel bleu (optionnel)")
+    parser.add_argument("--saturation", type=float, default=0.85, help="Saturation des couleurs (défaut: 0.85 pour atténuer la dominante NoIR)")
     parser.add_argument("--port", type=int, default=8080, help="Port d'écoute HTTP (défaut: 8080)")
     args = parser.parse_args()
 
@@ -119,8 +190,11 @@ def main():
             else:
                 raise e
 
-    # Configuration des contrôles matériels (AwbMode & ColourGains pour éliminer la dominante rose NoIR)
+    # Configuration des contrôles matériels (AwbMode, Saturation, ou ColourGains)
     controls_map = {"FrameRate": args.fps}
+    if args.saturation is not None:
+        controls_map["Saturation"] = args.saturation
+
     if args.red_gain is not None and args.blue_gain is not None:
         controls_map["AwbEnable"] = False
         controls_map["ColourGains"] = (args.red_gain, args.blue_gain)
@@ -135,9 +209,16 @@ def main():
             "daylight": 5,
             "cloudy": 6
         }
-        mode_val = awb_dict.get(args.awb, 1)
+        mode_val = awb_dict.get(args.awb, 4)
+        controls_map["AwbEnable"] = True
         controls_map["AwbMode"] = mode_val
-        print(f"    • Balance des blancs : {args.awb} (mode {mode_val}, réduction du rouge)")
+        print(f"    • Balance des blancs dynamique : {args.awb} (mode {mode_val}, réduction du rose)")
+    else:
+        controls_map["AwbEnable"] = True
+        controls_map["AwbMode"] = 0
+        print(f"    • Balance des blancs : Auto")
+
+    active_controls = dict(controls_map)
 
     config = picam2.create_video_configuration(
         main={"size": (args.width, args.height)},
