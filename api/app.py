@@ -21,6 +21,7 @@ def _init_db_schema():
                 pass
             Base.metadata.create_all(bind=conn)
             conn.execute(text("ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS role VARCHAR DEFAULT 'owner';"))
+            conn.execute(text("UPDATE user_devices SET role = 'owner' WHERE role IS NULL OR role = '';"))
             conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS code_expires_at TIMESTAMP;"))
             conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS tamper_status VARCHAR DEFAULT 'normal';"))
             conn.execute(text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS cpu_temp FLOAT;"))
