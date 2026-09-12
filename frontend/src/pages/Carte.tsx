@@ -103,6 +103,9 @@ export const Carte: React.FC = () => {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [gpsSuccess, setGpsSuccess] = useState(false);
 
+  // Type de fond de carte (Sombre ou Satellite) - Aucun API Key requis
+  const [mapLayer, setMapLayer] = useState<'dark' | 'satellite'>('dark');
+
   // Localisation GPS de l'appareil (Téléphone ou Ordinateur)
   const handleLocateUser = (forNewSite: boolean = false) => {
     if (!navigator.geolocation) {
@@ -570,27 +573,62 @@ export const Carte: React.FC = () => {
           </div>
         )}
 
-        {/* Bouton Flottant GPS sur la Carte */}
-        <button
-          type="button"
-          className={`map-floating-gps-btn ${isLocating ? 'locating' : ''}`}
-          onClick={() => handleLocateUser(false)}
-          title="Centrer la carte sur ma position GPS (Téléphone / PC)"
-        >
-          <GpsIcon size={16} className={isLocating ? 'spinning' : ''} />
-          <span>{isLocating ? 'Recherche GPS...' : 'Ma position'}</span>
-        </button>
+        {/* Contrôles Flottants sur la Carte (Type de carte + GPS) */}
+        <div className="map-floating-controls">
+          <button
+            type="button"
+            className="map-floating-btn"
+            onClick={() => setMapLayer((prev) => (prev === 'dark' ? 'satellite' : 'dark'))}
+            title="Basculer entre vue Sombre et vue Satellite"
+          >
+            <span>{mapLayer === 'dark' ? '🛰️ Vue Satellite' : '🌙 Plan Sombre'}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`map-floating-btn ${isLocating ? 'locating' : ''}`}
+            onClick={() => handleLocateUser(false)}
+            title="Centrer la carte sur ma position GPS (Téléphone / PC)"
+          >
+            <GpsIcon size={16} className={isLocating ? 'spinning' : ''} />
+            <span>{isLocating ? 'Recherche...' : 'Ma position'}</span>
+          </button>
+        </div>
 
         <MapContainer 
           center={selectedSite ? [selectedSite.lat, selectedSite.lng] : userPosition || [46.2276, 2.2137]} 
           zoom={selectedSite || userPosition ? 13 : 6} 
-          style={{ width: '100%', height: '100%', background: '#1a1a1a', borderRadius: '16px' }}
+          style={{ width: '100%', height: '100%', background: '#111118', borderRadius: '16px' }}
           zoomControl={false}
           attributionControl={false}
         >
-          <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          />
+          {/* Fonds de carte haute définition 100% gratuits et sans clé d'API requise */}
+          {mapLayer === 'satellite' ? (
+            <>
+              <TileLayer
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={19}
+              />
+              <TileLayer
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={19}
+                opacity={0.85}
+              />
+            </>
+          ) : (
+            <>
+              <TileLayer
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={16}
+              />
+              <TileLayer
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={16}
+                opacity={0.9}
+              />
+            </>
+          )}
+
           <MapClickHandler onMapClick={handleMapClick} />
           {selectedSite ? (
             <MapController center={[selectedSite.lat, selectedSite.lng]} />
