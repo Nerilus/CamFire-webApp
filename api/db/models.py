@@ -141,3 +141,16 @@ class Capture(Base):
     location = Column(String, nullable=True, default="Raspberry 4")
     image_url = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class Ticket(Base):
+    __tablename__ = "tickets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(Integer, ForeignKey("devices.id", ondelete="SET NULL"), nullable=True, index=True)
+    client_name = Column(String, nullable=False)
+    location = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    device = relationship("Device")
+

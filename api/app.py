@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from db.database import engine, Base
-from routers import auth, contacts, scan, weather, alerts, devices, sites, captures
+from routers import auth, contacts, scan, weather, alerts, devices, sites, captures, tickets
 from services.discord import send_discord_alert_sync
 
 import threading
@@ -132,6 +132,7 @@ app.include_router(contacts.router)
 app.include_router(scan.router)
 app.include_router(weather.router)
 app.include_router(alerts.router)
+app.include_router(tickets.router)
 
 @app.get("/")
 def read_root():
