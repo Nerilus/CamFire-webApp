@@ -427,7 +427,18 @@ def pair_device(
     ).first()
     existing_members_count = db.query(UserDevice).filter(UserDevice.device_id == device.id).count()
 
-    is_first_owner = (existing_members_count == 0 or not existing_owner_ud)
+    # Rétrocompatibilité : si l'appareil était déjà connecté avant cette fonctionnalité
+    # mais sans rôle owner explicite, le compte le plus ancien est garanti comme propriétaire légitime.
+    if not existing_owner_ud and existing_members_count > 0:
+        existing_owner_ud = db.query(UserDevice).filter(
+            UserDevice.device_id == device.id
+        ).order_by(UserDevice.paired_at.asc(), UserDevice.id.asc()).first()
+        if existing_owner_ud:
+            existing_owner_ud.role = "owner"
+            device.user_id = existing_owner_ud.user_id
+            db.commit()
+
+    is_first_owner = (existing_members_count == 0)
     assigned_role = "owner" if is_first_owner else "member"
     owner_user = existing_owner_ud.user if existing_owner_ud else None
 
