@@ -15,6 +15,7 @@ import {
   ShieldAlertIcon
 } from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
+import { DeviceLiveControls } from '../components/DeviceLiveControls';
 import { fetchZonesWeather, type WeatherZoneData, fetchForecast, type ZoneForecast } from '../services/weatherService';
 import { deviceService, type Device } from '../services/deviceService';
 import { siteService, type Site } from '../services/siteService';
@@ -656,12 +657,27 @@ export const Home: React.FC = () => {
         )}
 
         {pairedDevice && (
+          <div style={{ marginTop: '16px' }}>
+            <DeviceLiveControls
+              device={pairedDevice}
+              onDeviceUpdate={(updated) =>
+                setPairedDevice((prev) => (prev ? { ...prev, ...updated } : prev))
+              }
+            />
+          </div>
+        )}
+
+        {pairedDevice && (
           <VideoModal
             isOpen={isVideoModalOpen}
             onClose={() => setIsVideoModalOpen(false)}
             streamUrl={deviceService.getSecureStreamUrl(pairedDevice.device_id)}
             cameraName={pairedDevice.name}
             statusText="Détection en direct YOLOv8 & v11 active"
+            device={pairedDevice}
+            onDeviceUpdate={(updated) =>
+              setPairedDevice((prev) => (prev ? { ...prev, ...updated } : prev))
+            }
           />
         )}
 

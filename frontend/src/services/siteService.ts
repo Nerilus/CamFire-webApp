@@ -14,6 +14,9 @@ export interface SiteDeviceSummary {
   name: string;
   stream_url?: string;
   is_online: boolean;
+  is_maintenance_mode?: boolean;
+  maintenance_until?: string | null;
+  alarm_active?: boolean;
 }
 
 export interface Site {

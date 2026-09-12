@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { XIcon, MaximizeIcon, MinimizeIcon, CameraIcon, LockIcon } from './icons';
+import { DeviceLiveControls, type DeviceLike } from './DeviceLiveControls';
 import './VideoModal.css';
 
 interface VideoModalProps {
@@ -8,6 +9,8 @@ interface VideoModalProps {
   streamUrl: string;
   cameraName?: string;
   statusText?: string;
+  device?: DeviceLike | null;
+  onDeviceUpdate?: (updated: Partial<DeviceLike>) => void;
 }
 
 export const VideoModal: React.FC<VideoModalProps> = ({
@@ -16,6 +19,8 @@ export const VideoModal: React.FC<VideoModalProps> = ({
   streamUrl,
   cameraName = 'Caméra de Surveillance',
   statusText = 'Surveillance continue active',
+  device,
+  onDeviceUpdate,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -110,6 +115,12 @@ export const VideoModal: React.FC<VideoModalProps> = ({
             </div>
           )}
         </div>
+
+        {device && (
+          <div className="video-modal-controls-wrap">
+            <DeviceLiveControls device={device} onDeviceUpdate={onDeviceUpdate} />
+          </div>
+        )}
 
         <div className="video-modal-footer">
           <div className="video-modal-info-chip">

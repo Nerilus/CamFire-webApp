@@ -356,7 +356,17 @@ def send_heartbeat(hw_id: str, server_url: str, provision_key: str, stream_url: 
     )
     try:
         with urllib.request.urlopen(req, timeout=5, context=ssl_context) as resp:
-            return resp.status == 200
+            if resp.status == 200:
+                try:
+                    res_body = json.loads(resp.read().decode('utf-8'))
+                    is_maint = res_body.get("is_maintenance_mode", False)
+                    # Relai vers le serveur de flux local (port 8080)
+                    m_req = urllib.request.Request(f"http://127.0.0.1:8080/maintenance?enabled={str(is_maint).lower()}", data=b"", method="POST")
+                    urllib.request.urlopen(m_req, timeout=1)
+                except Exception:
+                    pass
+                return True
+            return False
     except Exception:
         return False
 

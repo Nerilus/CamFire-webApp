@@ -1,0 +1,360 @@
+.device-live-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.maintenance-active-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  padding: 10px 14px;
+  border-radius: 12px;
+  animation: bannerFadeIn 0.3s ease-out;
+}
+
+@keyframes bannerFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wrench-pulse {
+  color: #f59e0b;
+  flex-shrink: 0;
+  animation: wrenchSpin 4s ease-in-out infinite;
+}
+
+@keyframes wrenchSpin {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-15deg); }
+  75% { transform: rotate(15deg); }
+}
+
+.maintenance-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.maintenance-banner-text strong {
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.maintenance-banner-text span {
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.control-card {
+  background: rgba(18, 20, 29, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.control-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(22, 25, 36, 0.85);
+}
+
+.control-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.control-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+}
+
+.recording-dot {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #ef4444;
+  animation: blinkDot 1s infinite;
+}
+
+@keyframes blinkDot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.listening-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #00cc66;
+  background: rgba(0, 204, 102, 0.15);
+  border: 1px solid rgba(0, 204, 102, 0.3);
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
+.alarm-flashing-tag {
+  font-size: 10px;
+  font-weight: 800;
+  color: #ffffff;
+  background: #dc2626;
+  padding: 2px 8px;
+  border-radius: 10px;
+  animation: pulseAlarm 0.8s infinite;
+}
+
+@keyframes pulseAlarm {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 10px rgba(220, 38, 38, 0.8); }
+  50% { transform: scale(1.05); box-shadow: 0 0 16px rgba(220, 38, 38, 1); }
+}
+
+.maintenance-status-pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
+.maintenance-status-pill.active {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.maintenance-status-pill.inactive {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+}
+
+/* Boutons de contrôle génériques */
+.control-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #11131c;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #f1f5f9;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  width: 100%;
+}
+
+.control-btn:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: #171a26;
+  transform: translateY(-1px);
+}
+
+.control-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.control-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.btn-text-block strong {
+  font-size: 13px;
+  color: #fff;
+}
+
+.btn-text-block span {
+  font-size: 10.5px;
+  color: #94a3b8;
+}
+
+/* Bouton Push-to-Talk (Micro) */
+.ptt-btn {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, rgba(59, 130, 246, 0.05) 100%);
+  border-color: rgba(59, 130, 246, 0.3);
+  user-select: none;
+}
+
+.ptt-btn.recording {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border-color: #f87171;
+  color: #fff;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+}
+
+.ptt-btn.recording .ptt-labels span {
+  color: #fee2e2;
+}
+
+.ptt-icon-wrapper {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ptt-pulse-ring {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  animation: pttPulse 1.2s infinite;
+}
+
+@keyframes pttPulse {
+  0% { transform: scale(0.9); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.ptt-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ptt-labels strong {
+  font-size: 13px;
+  color: #fff;
+}
+
+.ptt-labels span {
+  font-size: 10.5px;
+  color: #94a3b8;
+}
+
+.talk-feedback {
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  text-align: center;
+  animation: fadeIn 0.2s;
+}
+
+.talk-feedback.success {
+  background: rgba(0, 204, 102, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(0, 204, 102, 0.3);
+}
+
+.talk-feedback.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Bouton Écoute */
+.listen-btn.active {
+  background: rgba(0, 204, 102, 0.15);
+  border-color: #00cc66;
+  color: #00cc66;
+}
+
+.listen-btn.active .btn-text-block span {
+  color: #4ade80;
+}
+
+/* Bouton Sirène d'Alarme */
+.alarm-btn {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(185, 28, 28, 0.05) 100%);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.alarm-btn.danger-active {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  border-color: #f87171;
+  box-shadow: 0 0 20px rgba(220, 38, 38, 0.7);
+}
+
+.alarm-btn.danger-active .btn-text-block span {
+  color: #fee2e2;
+}
+
+.siren-spin {
+  animation: sirenWiggle 0.6s infinite ease-in-out;
+}
+
+@keyframes sirenWiggle {
+  0%, 100% { transform: rotate(-8deg); }
+  50% { transform: rotate(8deg); }
+}
+
+/* Bouton Mode Travaux */
+.maintenance-btn.active {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+
+.maintenance-btn.active .btn-text-block span {
+  color: #fcd34d;
+}
+
+.maintenance-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.duration-label {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.duration-options {
+  display: flex;
+  gap: 4px;
+}
+
+.duration-chip {
+  background: #0f1118;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.duration-chip:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.duration-chip.selected {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: #f59e0b;
+  color: #fbbf24;
+}

@@ -28,6 +28,14 @@ class DeviceUpdateRequest(BaseModel):
     name: Optional[str] = None
     stream_url: Optional[str] = None
 
+class DeviceMaintenanceRequest(BaseModel):
+    enabled: bool
+    duration_hours: Optional[float] = None
+
+class DeviceAlarmRequest(BaseModel):
+    action: str = "start" # "start" ou "stop"
+    duration_seconds: Optional[int] = 15
+
 class DeviceResponse(BaseModel):
     id: int
     device_id: str
@@ -41,6 +49,9 @@ class DeviceResponse(BaseModel):
     status: str = "online"
     tamper_status: Optional[str] = "normal"
     cpu_temp: Optional[float] = None
+    is_maintenance_mode: bool = False
+    maintenance_until: Optional[datetime] = None
+    alarm_active: bool = False
 
     class Config:
         from_attributes = True

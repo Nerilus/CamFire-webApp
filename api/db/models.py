@@ -53,7 +53,10 @@ class User(Base):
                 "lng": dev.lng,
                 "status": status_val,
                 "tamper_status": dev.tamper_status or "normal",
-                "cpu_temp": dev.cpu_temp
+                "cpu_temp": dev.cpu_temp,
+                "is_maintenance_mode": getattr(dev, 'is_maintenance_mode', False) or False,
+                "maintenance_until": getattr(dev, 'maintenance_until', None),
+                "alarm_active": getattr(dev, 'alarm_active', False) or False
             })
         return result
 
@@ -88,6 +91,10 @@ class Device(Base):
     last_tamper_alert_at = Column(DateTime, nullable=True)
     lat = Column(Float, default=46.2276, nullable=True)
     lng = Column(Float, default=2.2137, nullable=True)
+    is_maintenance_mode = Column(Boolean, default=False, nullable=False) # Mode Travaux / Désactivation temporaire
+    maintenance_until = Column(DateTime, nullable=True) # Date de fin automatique du mode travaux
+    alarm_active = Column(Boolean, default=False, nullable=False) # Statut de la sirène d'alarme
+    alarm_triggered_at = Column(DateTime, nullable=True)
 
     user_devices = relationship("UserDevice", back_populates="device", cascade="all, delete-orphan")
     sites = relationship("Site", back_populates="device")

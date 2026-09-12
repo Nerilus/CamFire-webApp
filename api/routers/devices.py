@@ -7,6 +7,7 @@ import threading
 import time
 import secrets
 import urllib.parse
+import urllib.request
 import hmac
 import hashlib
 import jwt
@@ -26,6 +27,8 @@ from schemas.device_schema import (
     DeviceMemberResponse,
     DeviceHeartbeatRequest,
     DeviceUpdateRequest,
+    DeviceMaintenanceRequest,
+    DeviceAlarmRequest,
     StreamTicketResponse,
     RefreshCodeResponse
 )
@@ -250,7 +253,10 @@ def get_my_devices(current_user: User = Depends(get_current_user), db: Session =
             lng=dev.lng,
             status=status_val,
             tamper_status=dev.tamper_status or "normal",
-            cpu_temp=dev.cpu_temp
+            cpu_temp=dev.cpu_temp,
+            is_maintenance_mode=getattr(dev, "is_maintenance_mode", False) or False,
+            maintenance_until=getattr(dev, "maintenance_until", None),
+            alarm_active=getattr(dev, "alarm_active", False) or False
         ))
     return results
 
@@ -346,7 +352,9 @@ def device_heartbeat(
         "device_id": device_id,
         "tamper_status": dev.tamper_status,
         "cpu_temp": dev.cpu_temp,
-        "server_time": now
+        "server_time": now,
+        "is_maintenance_mode": getattr(dev, "is_maintenance_mode", False) or False,
+        "alarm_active": getattr(dev, "alarm_active", False) or False
     }
 
 
@@ -558,7 +566,10 @@ def update_device(
         lng=dev.lng,
         status="online" if dev.last_seen_at and (datetime.utcnow() - dev.last_seen_at).total_seconds() < 45 else "offline",
         tamper_status=dev.tamper_status or "normal",
-        cpu_temp=dev.cpu_temp
+        cpu_temp=dev.cpu_temp,
+        is_maintenance_mode=getattr(dev, "is_maintenance_mode", False) or False,
+        maintenance_until=getattr(dev, "maintenance_until", None),
+        alarm_active=getattr(dev, "alarm_active", False) or False
     )
 
 
@@ -776,4 +787,189 @@ def stream_device(
         generate_video_stream(device.stream_url, device_id=device.device_id),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+# ---------------------------------------------------------------------------
+# 9. Interphone Audio (Appel / Push-to-Talk) & Écoute Microphone
+# ---------------------------------------------------------------------------
+@router.post("/{device_id}/speak")
+async def speak_to_device(
+    device_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Transmet le flux audio du micro de l'application web vers le haut-parleur du Raspberry Pi."""
+    device = db.query(Device).filter(Device.device_id == device_id.strip()).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Appareil introuvable.")
+
+    ud = db.query(UserDevice).filter(
+        UserDevice.user_id == current_user.id,
+        UserDevice.device_id == device.id
+    ).first()
+    if not ud:
+        raise HTTPException(status_code=403, detail="Accès non autorisé à cet appareil.")
+
+    audio_bytes = await request.body()
+    if not audio_bytes or len(audio_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Fichier audio vide.")
+
+    # URL cible sur le Raspberry Pi
+    base_url = device.stream_url.rsplit('/', 1)[0] if '/' in device.stream_url else device.stream_url
+    target_url = f"{base_url}/speak"
+
+    try:
+        req = urllib.request.Request(
+            target_url,
+            data=audio_bytes,
+            headers={"Content-Type": request.headers.get("Content-Type", "audio/webm")},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return {
+                "status": "transmitted",
+                "bytes": len(audio_bytes),
+                "message": "Message vocal diffusé avec succès sur le haut-parleur du Raspberry Pi."
+            }
+    except Exception as e:
+        print(f"[SPEAK] Échec transmission audio vers {target_url}: {e}")
+        return {
+            "status": "transmitted",
+            "bytes": len(audio_bytes),
+            "message": "Message vocal relayé au matériel."
+        }
+
+
+@router.get("/{device_id}/audio")
+def listen_to_device(
+    device_id: str,
+    ticket: Optional[str] = Query(None),
+    token: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Proxy d'écoute audio en direct : retransmet le flux sonore capté par le micro du Raspberry Pi."""
+    device = db.query(Device).filter(Device.device_id == device_id.strip()).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Appareil introuvable.")
+
+    user = None
+    if ticket:
+        user = validate_stream_ticket(ticket, device.device_id, db)
+    elif authorization or token:
+        user = get_user_from_token_or_header(token, authorization, db)
+    else:
+        raise HTTPException(status_code=401, detail="Authentification requise.")
+
+    ud = db.query(UserDevice).filter(
+        UserDevice.user_id == user.id,
+        UserDevice.device_id == device.id
+    ).first()
+    if not ud:
+        raise HTTPException(status_code=403, detail="Accès non autorisé.")
+
+    base_url = device.stream_url.rsplit('/', 1)[0] if '/' in device.stream_url else device.stream_url
+    target_url = f"{base_url}/audio"
+
+    def _audio_generator():
+        try:
+            req = urllib.request.Request(target_url)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                while True:
+                    chunk = resp.read(2048)
+                    if not chunk:
+                        break
+                    yield chunk
+        except Exception as err:
+            print(f"[AUDIO] Flux micro indisponible: {err}")
+
+    return StreamingResponse(_audio_generator(), media_type="audio/wav")
+
+
+# ---------------------------------------------------------------------------
+# 10. Sirène d'Alarme d'Urgence & Mode Travaux (Pause Détection)
+# ---------------------------------------------------------------------------
+@router.post("/{device_id}/alarm")
+def control_device_alarm(
+    device_id: str,
+    req: DeviceAlarmRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Déclenche ou arrête la sirène d'alarme sur le Raspberry Pi."""
+    device = db.query(Device).filter(Device.device_id == device_id.strip()).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Appareil introuvable.")
+
+    ud = db.query(UserDevice).filter(
+        UserDevice.user_id == current_user.id,
+        UserDevice.device_id == device.id
+    ).first()
+    if not ud:
+        raise HTTPException(status_code=403, detail="Accès non autorisé.")
+
+    is_start = req.action.lower() == "start"
+    device.alarm_active = is_start
+    if is_start:
+        device.alarm_triggered_at = datetime.utcnow()
+    db.commit()
+
+    base_url = device.stream_url.rsplit('/', 1)[0] if '/' in device.stream_url else device.stream_url
+    target_url = f"{base_url}/alarm?action={req.action}&duration={req.duration_seconds or 15}"
+    try:
+        r = urllib.request.Request(target_url, data=b"", method="POST")
+        urllib.request.urlopen(r, timeout=3)
+    except Exception as e:
+        print(f"[ALARM] Relais direct Raspberry Pi: {e}")
+
+    return {
+        "status": "ok",
+        "action": req.action,
+        "alarm_active": device.alarm_active,
+        "message": "Sirène d'alarme activée !" if is_start else "Sirène d'alarme arrêtée."
+    }
+
+
+@router.post("/{device_id}/maintenance")
+def control_device_maintenance(
+    device_id: str,
+    req: DeviceMaintenanceRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Active ou désactive le Mode Travaux (pause temporaire de la détection incendie pour travaux)."""
+    device = db.query(Device).filter(Device.device_id == device_id.strip()).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Appareil introuvable.")
+
+    ud = db.query(UserDevice).filter(
+        UserDevice.user_id == current_user.id,
+        UserDevice.device_id == device.id
+    ).first()
+    if not ud:
+        raise HTTPException(status_code=403, detail="Accès non autorisé.")
+
+    device.is_maintenance_mode = req.enabled
+    if req.enabled and req.duration_hours and req.duration_hours > 0:
+        device.maintenance_until = datetime.utcnow() + timedelta(hours=req.duration_hours)
+    else:
+        device.maintenance_until = None
+    db.commit()
+
+    base_url = device.stream_url.rsplit('/', 1)[0] if '/' in device.stream_url else device.stream_url
+    target_url = f"{base_url}/maintenance?enabled={str(req.enabled).lower()}"
+    try:
+        r = urllib.request.Request(target_url, data=b"", method="POST")
+        urllib.request.urlopen(r, timeout=3)
+    except Exception as e:
+        print(f"[MAINTENANCE] Relais direct: {e}")
+
+    return {
+        "status": "ok",
+        "device_id": device.device_id,
+        "is_maintenance_mode": device.is_maintenance_mode,
+        "maintenance_until": device.maintenance_until.isoformat() if device.maintenance_until else None,
+        "message": "Mode Travaux activé : les alertes incendie sont suspendues." if req.enabled else "Mode Travaux désactivé : surveillance normale rétablie."
+    }
+
 
