@@ -281,8 +281,8 @@ export const Home: React.FC = () => {
                     </div>
                     <span>
                       {hasDevice 
-                        ? `Surveillance continue active • Rayon : ${s.radius}m • [${s.lat.toFixed(3)}, ${s.lng.toFixed(3)}]` 
-                        : `Site enregistré • Rayon : ${s.radius}m • En attente de caméra`}
+                        ? `Surveillance continue active • Rayon : ${s.radius || 300}m${s.lat != null && s.lng != null ? ` • [${Number(s.lat).toFixed(3)}, ${Number(s.lng).toFixed(3)}]` : ''}` 
+                        : `Site enregistré • Rayon : ${s.radius || 300}m • En attente de caméra`}
                     </span>
                     {w && (
                       <span style={{ color: hasDevice ? 'var(--safe)' : 'var(--text-faint)', marginTop: '4px', fontSize: '10.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
