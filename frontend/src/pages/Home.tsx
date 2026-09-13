@@ -19,6 +19,7 @@ import { DeviceLiveControls } from '../components/DeviceLiveControls';
 import { fetchZonesWeather, type WeatherZoneData, fetchForecast, type ZoneForecast } from '../services/weatherService';
 import { deviceService, type Device } from '../services/deviceService';
 import { siteService, type Site } from '../services/siteService';
+import { API_URL } from '../config/api';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet';
 import './Home.css';
@@ -47,9 +48,8 @@ export const Home: React.FC = () => {
     if (!pairedDevice) return;
     setIsSubmittingTicket(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const token = localStorage.getItem('token');
-      const response = await fetch(`${apiUrl}/tickets`, {
+      const response = await fetch(`${API_URL}/tickets`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
