@@ -20,6 +20,9 @@ class DeviceHeartbeatRequest(BaseModel):
     timestamp: float
     nonce: str
     cpu_temp: Optional[float] = None
+    disk_free_gb: Optional[float] = None
+    wifi_rssi: Optional[int] = None
+    battery_voltage: Optional[float] = None
     tamper_detected: bool = False
     signature: str
     stream_url: Optional[str] = None
@@ -36,6 +39,9 @@ class DeviceAlarmRequest(BaseModel):
     action: str = "start" # "start" ou "stop"
     duration_seconds: Optional[int] = 15
 
+class DevicePrivacyMasksRequest(BaseModel):
+    privacy_masks: str # JSON array format "[[x1,y1,x2,y2],...]"
+
 class DeviceResponse(BaseModel):
     id: int
     device_id: str
@@ -49,6 +55,10 @@ class DeviceResponse(BaseModel):
     status: str = "online"
     tamper_status: Optional[str] = "normal"
     cpu_temp: Optional[float] = None
+    disk_free_gb: Optional[float] = None
+    wifi_rssi: Optional[int] = None
+    battery_voltage: Optional[float] = None
+    privacy_masks: Optional[str] = None
     is_maintenance_mode: bool = False
     maintenance_until: Optional[datetime] = None
     alarm_active: bool = False

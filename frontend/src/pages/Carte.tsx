@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Circle, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle, Polygon, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, FlashIcon, TrashIcon, GpsIcon, PlusIcon, GlobeIcon } from '../components/icons';
+import { 
+  FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, 
+  FlashIcon, TrashIcon, GpsIcon, PlusIcon, GlobeIcon, WindIcon, DropletIcon, 
+  PhoneIcon, CopyIcon, CheckCircleIcon 
+} from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
 import { DeviceLiveControls } from '../components/DeviceLiveControls';
 import { fetchZonesWeather } from '../services/weatherService';
 import { deviceService, type Device } from '../services/deviceService';
-import { siteService, type Site, type SiteCreateInput } from '../services/siteService';
+import { siteService, type Site, type SiteCreateInput, type TacticalPoint } from '../services/siteService';
 import './Carte.css';
 
 import { API_URL } from '../config/api';
@@ -37,6 +41,72 @@ const createSiteIcon = (hasDevice: boolean, status: 'safe' | 'warn' | 'fire', is
     iconAnchor: [size / 2, size / 2],
   });
 };
+
+// Marqueurs tactiques DFCI (Cuves, Poteaux incendie, Bassins, Accès, Barrières)
+const createTacticalIcon = (type: string) => {
+  let color = '#0284c7';
+  let svg = `<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>`;
+  if (type === 'hydrant') {
+    color = '#ef4444';
+    svg = `<path d="M5 12h14M12 5v14M8 5h8M7 19h10"/>`;
+  } else if (type === 'pool') {
+    color = '#06b6d4';
+    svg = `<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>`;
+  } else if (type === 'access_path') {
+    color = '#10b981';
+    svg = `<rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>`;
+  } else if (type === 'gate') {
+    color = '#f59e0b';
+    svg = `<path d="M4 10h16M4 14h16M7 6v12M17 6v12"/>`;
+  }
+
+  return L.divIcon({
+    className: 'custom-leaflet-tactical-icon',
+    html: `
+      <div style="width: 28px; height: 28px; background-color: #0d1117; border: 2px solid ${color}; border-radius: 8px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px ${color}88; position: relative;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          ${svg}
+        </svg>
+      </div>
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+};
+
+// Conversion coordonnées décimales en DMS sexagésimal (norme pompiers SDIS)
+function toDMS(coordinate: number, type: 'lat' | 'lng'): string {
+  const absolute = Math.abs(coordinate);
+  const degrees = Math.floor(absolute);
+  const minutesNotTruncated = (absolute - degrees) * 60;
+  const minutes = Math.floor(minutesNotTruncated);
+  const seconds = Math.floor((minutesNotTruncated - minutes) * 60);
+  const direction = type === 'lat' ? (coordinate >= 0 ? 'N' : 'S') : (coordinate >= 0 ? 'E' : 'O');
+  return `${degrees}° ${minutes}' ${seconds}" ${direction}`;
+}
+
+// Calcul mathématique du cône de propagation sous le vent
+function computeWindCone(lat: number, lng: number, windDirectionDeg: number, distanceMeters: number, apertureDeg = 46): [number, number][] {
+  const downwind = (windDirectionDeg + 180) % 360;
+  const startAngle = downwind - apertureDeg / 2;
+  const endAngle = downwind + apertureDeg / 2;
+  const points: [number, number][] = [[lat, lng]];
+
+  const R = 6371000;
+  const latRad = (lat * Math.PI) / 180;
+  const numSteps = 7;
+  for (let i = 0; i <= numSteps; i++) {
+    const angle = startAngle + (i * (endAngle - startAngle)) / numSteps;
+    const angleRad = (angle * Math.PI) / 180;
+    const dLat = (distanceMeters * Math.cos(angleRad)) / R;
+    const dLng = (distanceMeters * Math.sin(angleRad)) / (R * Math.cos(latRad));
+    const pLat = lat + (dLat * 180) / Math.PI;
+    const pLng = lng + (dLng * 180) / Math.PI;
+    points.push([pLat, pLng]);
+  }
+  points.push([lat, lng]);
+  return points;
+}
 
 // Marqueur de position de l'utilisateur (GPS)
 const createUserLocationIcon = () => {
@@ -159,9 +229,32 @@ export const Carte: React.FC = () => {
   const [selectedDeviceIdToAssign, setSelectedDeviceIdToAssign] = useState<number | ''>('');
   const [isAssigningDevice, setIsAssigningDevice] = useState(false);
 
-  // Alertes et météo
+  // Alertes et météo enrichie (Vent & Direction)
   const [fireAlert, setFireAlert] = useState<{fire: boolean, confidence: number, timestamp: number} | null>(null);
-  const [weatherRisk, setWeatherRisk] = useState<{temp: number, risk: number, humidity: number} | null>(null);
+  const [weatherRisk, setWeatherRisk] = useState<{
+    temp: number;
+    risk: number;
+    humidity: number;
+    wind_speed: number;
+    wind_direction: number;
+  } | null>(null);
+
+  // Points d'Intérêt Tactiques DFCI (Cuves, Poteaux, Accès, Barrières)
+  const [tacticalPoints, setTacticalPoints] = useState<TacticalPoint[]>([]);
+  const [showTacticalPoints, setShowTacticalPoints] = useState(true);
+  const [isAddTacticalModalOpen, setIsAddTacticalModalOpen] = useState(false);
+  const [newPtName, setNewPtName] = useState('');
+  const [newPtType, setNewPtType] = useState<'water_tank' | 'hydrant' | 'pool' | 'access_path' | 'gate'>('water_tank');
+  const [newPtCapacity, setNewPtCapacity] = useState<number | ''>(5000);
+  const [newPtNotes, setNewPtNotes] = useState('');
+  const [isSubmittingTactical, setIsSubmittingTactical] = useState(false);
+
+  // Cône de propagation du vent
+  const [showWindCone, setShowWindCone] = useState(true);
+
+  // Fiche d'intervention d'urgence 18/112
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [emergencyCopied, setEmergencyCopied] = useState(false);
 
   // Chargement initial des sites et des appareils appairés
   const loadSitesAndDevices = async () => {
@@ -206,6 +299,17 @@ export const Carte: React.FC = () => {
     }
   }, [siteUrlParam, sites]);
 
+  // Chargement des points tactiques DFCI du site sélectionné
+  useEffect(() => {
+    if (selectedSiteId) {
+      siteService.getTacticalPoints(selectedSiteId)
+        .then(setTacticalPoints)
+        .catch(() => setTacticalPoints([]));
+    } else {
+      setTacticalPoints([]);
+    }
+  }, [selectedSiteId]);
+
   // Polling du statut incendie IA
   useEffect(() => {
     const checkStatus = async () => {
@@ -234,7 +338,7 @@ export const Carte: React.FC = () => {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Chargement météo
+  // Chargement météo avec vent et direction
   useEffect(() => {
     const loadWeather = async () => {
       const weatherData = await fetchZonesWeather();
@@ -242,7 +346,9 @@ export const Carte: React.FC = () => {
         setWeatherRisk({
           temp: weatherData[0].temperature,
           risk: weatherData[0].risk_percentage,
-          humidity: weatherData[0].humidity
+          humidity: weatherData[0].humidity,
+          wind_speed: weatherData[0].wind_speed || 18,
+          wind_direction: weatherData[0].wind_direction || 45
         });
       }
     };
@@ -345,6 +451,44 @@ export const Carte: React.FC = () => {
     }
   };
 
+  // Ajout d'un point d'intérêt tactique DFCI (eau / accès)
+  const handleAddTacticalPoint = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSiteId || !selectedSite) return;
+    setIsSubmittingTactical(true);
+    try {
+      const offsetLat = (Math.random() - 0.5) * 0.0018;
+      const offsetLng = (Math.random() - 0.5) * 0.0018;
+      const created = await siteService.createTacticalPoint(selectedSiteId, {
+        name: newPtName.trim(),
+        point_type: newPtType,
+        lat: parseFloat((selectedSite.lat + offsetLat).toFixed(6)),
+        lng: parseFloat((selectedSite.lng + offsetLng).toFixed(6)),
+        capacity_liters: newPtCapacity === '' ? undefined : Number(newPtCapacity),
+        notes: newPtNotes.trim() || undefined
+      });
+      setTacticalPoints(prev => [...prev, created]);
+      setIsAddTacticalModalOpen(false);
+      setNewPtName('');
+      setNewPtNotes('');
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de l'ajout du point DFCI.");
+    } finally {
+      setIsSubmittingTactical(false);
+    }
+  };
+
+  // Suppression d'un point d'intérêt tactique DFCI
+  const handleDeleteTacticalPoint = async (pointId: number) => {
+    if (!window.confirm("Supprimer ce point tactique DFCI ?")) return;
+    try {
+      await siteService.deleteTacticalPoint(pointId);
+      setTacticalPoints(prev => prev.filter(p => p.id !== pointId));
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de la suppression.");
+    }
+  };
+
   const selectedSite = sites.find(s => s.id === selectedSiteId);
 
   return (
@@ -405,6 +549,39 @@ export const Carte: React.FC = () => {
           >
             <PlusIcon size={15} />
             <span className="hide-on-mobile">Ajouter</span>
+          </button>
+
+          {/* Bouton Fiche d'Urgence 18 / 112 */}
+          <button
+            type="button"
+            className="hud-btn-emergency"
+            onClick={() => setShowEmergencyModal(true)}
+            title="Ouvrir la fiche d'intervention d'urgence prête pour les secours (18 / 112)"
+          >
+            <PhoneIcon size={13} />
+            <span>18 / 112</span>
+          </button>
+
+          {/* Calque Points DFCI */}
+          <button
+            type="button"
+            className={`hud-btn-icon ${showTacticalPoints ? 'active' : ''}`}
+            onClick={() => setShowTacticalPoints(p => !p)}
+            title={showTacticalPoints ? "Masquer les réserves d'eau et accès DFCI" : "Afficher les réserves d'eau et accès DFCI"}
+          >
+            <DropletIcon size={14} />
+            <span className="hide-on-mobile" style={{ fontSize: '11px', fontWeight: 700 }}>DFCI</span>
+          </button>
+
+          {/* Calque Cône de propagation du vent */}
+          <button
+            type="button"
+            className={`hud-btn-icon ${showWindCone ? 'active' : ''}`}
+            onClick={() => setShowWindCone(p => !p)}
+            title={showWindCone ? "Masquer le cône de propagation sous le vent" : "Afficher le cône prédictif de propagation"}
+          >
+            <WindIcon size={14} />
+            <span className="hide-on-mobile" style={{ fontSize: '11px', fontWeight: 700 }}>Vent</span>
           </button>
 
           {sites.length > 0 && (
@@ -667,6 +844,63 @@ export const Carte: React.FC = () => {
               </React.Fragment>
             );
           })}
+
+          {/* Cône dynamique de propagation du feu sous le vent */}
+          {showWindCone && selectedSite && weatherRisk && (
+            <Polygon
+              positions={computeWindCone(
+                selectedSite.lat,
+                selectedSite.lng,
+                weatherRisk.wind_direction || 45,
+                Math.max((selectedSite.radius || 300) * 1.8, (weatherRisk.wind_speed || 15) * 45)
+              )}
+              pathOptions={{
+                color: '#ff4500',
+                fillColor: '#ff5500',
+                fillOpacity: 0.22,
+                weight: 2,
+                dashArray: '5, 5'
+              }}
+            >
+              <Tooltip permanent direction="center" className="site-leaflet-tooltip" opacity={0.92}>
+                <span>Vent {weatherRisk.wind_speed} km/h • Cône propagation 30 min</span>
+              </Tooltip>
+            </Polygon>
+          )}
+
+          {/* Points d'Intérêt Tactiques DFCI (Cuves, Poteaux, Accès, Barrières) */}
+          {showTacticalPoints && tacticalPoints.map((pt) => (
+            <Marker key={pt.id} position={[pt.lat, pt.lng]} icon={createTacticalIcon(pt.point_type)}>
+              <Tooltip permanent direction="top" offset={[0, -14]} className="site-leaflet-tooltip">
+                <span>{pt.name} {pt.capacity_liters ? `(${pt.capacity_liters.toLocaleString()}L)` : ''}</span>
+              </Tooltip>
+              <Popup className="custom-tactical-popup">
+                <div style={{ padding: '6px 4px', minWidth: '170px' }}>
+                  <strong style={{ fontSize: '13px', display: 'block', marginBottom: '4px', color: '#f8fafc' }}>{pt.name}</strong>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
+                    Type : {pt.point_type === 'water_tank' ? "Cuve d'eau" : pt.point_type === 'hydrant' ? "Poteau incendie" : pt.point_type === 'pool' ? "Bassin / Piscine" : pt.point_type === 'access_path' ? "Accès Carrossable" : "Barrière DFCI"}
+                  </div>
+                  {pt.capacity_liters && (
+                    <div style={{ fontSize: '11px', color: '#38bdf8', marginBottom: '4px', fontWeight: 600 }}>
+                      Capacité : {pt.capacity_liters.toLocaleString()} Litres
+                    </div>
+                  )}
+                  {pt.notes && (
+                    <div style={{ fontSize: '11px', color: '#cbd5e1', marginBottom: '8px', background: 'rgba(255,255,255,0.06)', padding: '4px 6px', borderRadius: '4px' }}>
+                      {pt.notes}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTacticalPoint(pt.id)}
+                    style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '5px 8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', width: '100%' }}
+                  >
+                    Supprimer ce point
+                  </button>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
         </MapContainer>
 
         {/* Panneau Détails du Site Sélectionné */}
@@ -849,6 +1083,13 @@ export const Carte: React.FC = () => {
                 <span className="telemetry-sub">{(weatherRisk?.risk || 0) > 60 ? 'Critique' : (weatherRisk?.risk || 0) > 30 ? 'Modéré' : 'Faible'}</span>
               </div>
               <div className="telemetry-pill">
+                <span className="telemetry-label">Points DFCI</span>
+                <strong className="telemetry-value" style={{ color: '#0284c7' }}>
+                  {tacticalPoints.length}
+                </strong>
+                <span className="telemetry-sub">{tacticalPoints.length > 0 ? 'Eau / Accès' : 'Aucun'}</span>
+              </div>
+              <div className="telemetry-pill">
                 <span className="telemetry-label">Dispositif</span>
                 <strong className="telemetry-value" style={{ fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {selectedSite.device ? selectedSite.device.name : 'Aucun'}
@@ -865,6 +1106,16 @@ export const Carte: React.FC = () => {
               </span>
               
               <div className="panel-footer-actions">
+                <button
+                  type="button"
+                  className="btn-action-tactical"
+                  onClick={() => setIsAddTacticalModalOpen(true)}
+                  title="Ajouter une réserve d'eau ou un accès DFCI pour les secours"
+                >
+                  <PlusIcon size={12} />
+                  <span>Point DFCI</span>
+                </button>
+
                 <button 
                   type="button"
                   className="btn-action-secondary"
@@ -1277,6 +1528,270 @@ export const Carte: React.FC = () => {
               </button>
               <button type="button" className="site-btn-cancel" onClick={() => setIsSitesListModalOpen(false)}>
                 Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Ajout Point DFCI Tactique */}
+      {isAddTacticalModalOpen && selectedSite && (
+        <div className="site-modal-backdrop" onClick={() => setIsAddTacticalModalOpen(false)}>
+          <div className="site-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="site-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#38bdf8' }}>
+                <DropletIcon size={18} />
+                <span>Ajouter un Point Tactique DFCI</span>
+              </h3>
+              <button type="button" className="site-modal-close" onClick={() => setIsAddTacticalModalOpen(false)}>
+                <XIcon size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.5 }}>
+              Positionné sur le site <strong>{selectedSite.name}</strong>. Ces repères orientent les secours SDIS et les engins CCF en cas d'intervention pour localiser l'eau et les accès.
+            </p>
+
+            <form onSubmit={handleAddTacticalPoint} className="site-form">
+              <div className="site-form-group">
+                <label>Nom ou référence du point *</label>
+                <input
+                  type="text"
+                  required
+                  value={newPtName}
+                  onChange={(e) => setNewPtName(e.target.value)}
+                  placeholder="Ex: Cuve Béton DFCI 30m³ ou Poteau Rouge #4"
+                />
+              </div>
+
+              <div className="site-form-group">
+                <label>Type d'infrastructure DFCI *</label>
+                <select
+                  value={newPtType}
+                  onChange={(e) => setNewPtType(e.target.value as any)}
+                >
+                  <option value="water_tank">Cuve d'eau DFCI</option>
+                  <option value="hydrant">Poteau incendie (Hydrant)</option>
+                  <option value="pool">Bassin naturel / Piscine</option>
+                  <option value="access_path">Chemin carrossable CCF / Accès secours</option>
+                  <option value="gate">Barrière DFCI / Portail à clé</option>
+                </select>
+              </div>
+
+              {(newPtType === 'water_tank' || newPtType === 'hydrant' || newPtType === 'pool') && (
+                <div className="site-form-group">
+                  <label>Capacité estimée (Litres)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    value={newPtCapacity}
+                    onChange={(e) => setNewPtCapacity(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="Ex: 10000"
+                  />
+                </div>
+              )}
+
+              <div className="site-form-group">
+                <label>Instructions d'accès & détails tactiques</label>
+                <textarea
+                  rows={3}
+                  value={newPtNotes}
+                  onChange={(e) => setNewPtNotes(e.target.value)}
+                  placeholder="Ex: Raccord symétrique Guillemin DN65, code cadenas 3812, accès camion 4x4 uniquement."
+                />
+              </div>
+
+              <div className="site-modal-actions">
+                <button
+                  type="submit"
+                  disabled={isSubmittingTactical || !newPtName.trim()}
+                  className="site-btn-submit"
+                >
+                  {isSubmittingTactical ? "Enregistrement..." : "Enregistrer le point"}
+                </button>
+                <button
+                  type="button"
+                  className="site-btn-cancel"
+                  onClick={() => setIsAddTacticalModalOpen(false)}
+                >
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Fiche d'Intervention d'Urgence 18 / 112 */}
+      {showEmergencyModal && (
+        <div className="site-modal-backdrop" onClick={() => setShowEmergencyModal(false)}>
+          <div className="site-modal-card emergency-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="site-modal-header" style={{ borderBottomColor: 'rgba(239, 68, 68, 0.3)' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444' }}>
+                <PhoneIcon size={20} />
+                <span>Fiche d'Urgence SDIS 18 / 112</span>
+              </h3>
+              <button type="button" className="site-modal-close" onClick={() => setShowEmergencyModal(false)}>
+                <XIcon size={18} />
+              </button>
+            </div>
+
+            {selectedSite ? (
+              <div className="emergency-modal-content">
+                {/* Boutons d'Appel Immédiat */}
+                <div className="emergency-call-row">
+                  <a href="tel:18" className="emergency-call-btn btn-18">
+                    <PhoneIcon size={20} />
+                    <div style={{ textAlign: 'left' }}>
+                      <span style={{ fontSize: '11px', textTransform: 'uppercase', opacity: 0.85, display: 'block' }}>Appel direct</span>
+                      <strong style={{ fontSize: '16px' }}>18 · Pompiers</strong>
+                    </div>
+                  </a>
+                  <a href="tel:112" className="emergency-call-btn btn-112">
+                    <PhoneIcon size={20} />
+                    <div style={{ textAlign: 'left' }}>
+                      <span style={{ fontSize: '11px', textTransform: 'uppercase', opacity: 0.85, display: 'block' }}>Numéro européen</span>
+                      <strong style={{ fontSize: '16px' }}>112 · Urgences</strong>
+                    </div>
+                  </a>
+                </div>
+
+                {/* Coordonnées SDIS & Navigation */}
+                <div className="emergency-info-section">
+                  <div className="emergency-info-header">
+                    <span style={{ fontWeight: 700, color: '#f8fafc', fontSize: '13px' }}>Site : {selectedSite.name}</span>
+                    <span className="emergency-sdis-badge">Format opérationnel SDIS</span>
+                  </div>
+
+                  <div className="emergency-coords-grid">
+                    <div className="emergency-coord-card">
+                      <span className="coord-label">GPS Sexagésimal (DMS)</span>
+                      <strong className="coord-val">{toDMS(selectedSite.lat, 'lat')} • {toDMS(selectedSite.lng, 'lng')}</strong>
+                    </div>
+                    <div className="emergency-coord-card">
+                      <span className="coord-label">GPS Décimal</span>
+                      <strong className="coord-val">{selectedSite.lat.toFixed(6)}, {selectedSite.lng.toFixed(6)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="emergency-nav-links">
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${selectedSite.lat},${selectedSite.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="emergency-nav-btn"
+                    >
+                      <GlobeIcon size={14} />
+                      <span>Itinéraire Google Maps</span>
+                    </a>
+                    <a
+                      href={`https://waze.com/ul?ll=${selectedSite.lat},${selectedSite.lng}&navigate=yes`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="emergency-nav-btn"
+                    >
+                      <GpsIcon size={14} />
+                      <span>Guidage Waze</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Point d'eau DFCI le plus proche */}
+                <div className="emergency-tactical-block">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <DropletIcon size={16} color="#38bdf8" />
+                    <strong style={{ fontSize: '13px', color: '#e2e8f0' }}>Ressource en eau DFCI la plus proche</strong>
+                  </div>
+                  {(() => {
+                    const waterPts = tacticalPoints.filter(p => p.point_type === 'water_tank' || p.point_type === 'hydrant' || p.point_type === 'pool');
+                    if (waterPts.length === 0) {
+                      return (
+                        <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+                          Aucune réserve d'eau DFCI enregistrée sur ce site. Pensez à en ajouter une via le bouton "+ Point DFCI".
+                        </p>
+                      );
+                    }
+                    const nearest = [...waterPts].sort((a, b) => {
+                      const distA = Math.hypot(a.lat - selectedSite.lat, a.lng - selectedSite.lng);
+                      const distB = Math.hypot(b.lat - selectedSite.lat, b.lng - selectedSite.lng);
+                      return distA - distB;
+                    })[0];
+                    const distMeters = Math.round(Math.hypot(nearest.lat - selectedSite.lat, nearest.lng - selectedSite.lng) * 111000);
+                    return (
+                      <div style={{ background: 'rgba(2, 132, 199, 0.12)', border: '1px solid rgba(2, 132, 199, 0.3)', borderRadius: '8px', padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <strong style={{ fontSize: '13px', color: '#38bdf8' }}>{nearest.name}</strong>
+                          <span style={{ fontSize: '11px', background: '#0284c7', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                            ~{distMeters} m
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                          {nearest.point_type === 'water_tank' ? "Cuve d'eau" : nearest.point_type === 'hydrant' ? "Poteau incendie" : "Bassin"}
+                          {nearest.capacity_liters ? ` • Capacité : ${nearest.capacity_liters.toLocaleString()} L` : ''}
+                        </div>
+                        {nearest.notes && (
+                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>{nearest.notes}</div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Script de transmission CODIS / 18 avec copie 1-clic */}
+                {(() => {
+                  const waterPts = tacticalPoints.filter(p => p.point_type === 'water_tank' || p.point_type === 'hydrant' || p.point_type === 'pool');
+                  const nearest = waterPts.length > 0 ? [...waterPts].sort((a, b) => {
+                    const distA = Math.hypot(a.lat - selectedSite.lat, a.lng - selectedSite.lng);
+                    const distB = Math.hypot(b.lat - selectedSite.lat, b.lng - selectedSite.lng);
+                    return distA - distB;
+                  })[0] : null;
+                  const distMeters = nearest ? Math.round(Math.hypot(nearest.lat - selectedSite.lat, nearest.lng - selectedSite.lng) * 111000) : null;
+                  
+                  const dispatchScript = `ALERTE INCENDIE CAMFIRE - TRANSMISSION CODIS 18:
+Site : ${selectedSite.name}
+GPS DMS : ${toDMS(selectedSite.lat, 'lat')} / ${toDMS(selectedSite.lng, 'lng')}
+GPS Décimal : ${selectedSite.lat.toFixed(6)}, ${selectedSite.lng.toFixed(6)}
+Vent : ${weatherRisk?.wind_speed ?? 0} km/h (dir ${weatherRisk?.wind_direction ?? 0}°)
+Point d'eau : ${nearest ? `${nearest.name} (${nearest.capacity_liters ? nearest.capacity_liters.toLocaleString() + 'L' : 'non précisé'} à ~${distMeters}m)` : 'Non renseigné'}
+Lien GPS : https://www.google.com/maps/search/?api=1&query=${selectedSite.lat},${selectedSite.lng}`;
+
+                  return (
+                    <div className="emergency-dispatch-box">
+                      <div className="dispatch-header">
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc' }}>Texte de briefing à dicter aux opérateurs SDIS</span>
+                        <button
+                          type="button"
+                          className={`btn-copy-dispatch ${emergencyCopied ? 'copied' : ''}`}
+                          onClick={() => {
+                            navigator.clipboard.writeText(dispatchScript);
+                            setEmergencyCopied(true);
+                            setTimeout(() => setEmergencyCopied(false), 2500);
+                          }}
+                        >
+                          {emergencyCopied ? <CheckCircleIcon size={14} /> : <CopyIcon size={14} />}
+                          <span>{emergencyCopied ? 'Fiche copiée !' : 'Copier le briefing'}</span>
+                        </button>
+                      </div>
+                      <pre className="dispatch-pre">{dispatchScript}</pre>
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <p style={{ color: '#94a3b8', fontSize: '13px', margin: '20px 0' }}>
+                Sélectionnez d'abord un site sur la carte pour générer la fiche d'intervention d'urgence.
+              </p>
+            )}
+
+            <div className="site-modal-actions" style={{ marginTop: '16px' }}>
+              <button
+                type="button"
+                className="site-btn-cancel"
+                style={{ width: '100%', textAlign: 'center' }}
+                onClick={() => setShowEmergencyModal(false)}
+              >
+                Fermer la fiche d'urgence
               </button>
             </div>
           </div>

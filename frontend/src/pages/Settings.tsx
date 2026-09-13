@@ -1,14 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon, TrashIcon, MailIcon } from '../components/icons';
+import { 
+  PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon, TrashIcon, MailIcon,
+  ShieldIcon, ActivityIcon, CpuIcon, HardDriveIcon, WifiIcon, BatteryIcon
+} from '../components/icons';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
 import { contactService, type EmergencyContact } from '../services/contactService';
 import { deviceService, type Device, type DeviceMember } from '../services/deviceService';
+import { notificationService } from '../services/notificationService';
 import { DeviceLiveControls } from '../components/DeviceLiveControls';
 import './Settings.css';
 
 type Sensitivity = 'low' | 'medium' | 'high';
+
+const parseMasks = (raw?: string | null): Array<{ label: string; x: number; y: number; width: number; height: number }> => {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
 
 export const Settings: React.FC = () => {
   const navigate = useNavigate();
@@ -16,7 +30,6 @@ export const Settings: React.FC = () => {
   const [autoScan, setAutoScan] = useState(true);
   const [interval, setIntervalValue] = useState(60);
   const [sensitivity, setSensitivity] = useState<Sensitivity>('high');
-  const [notifications, setNotifications] = useState(true);
 
   // Contacts d'urgence
   const [contacts, setContacts] = useState<EmergencyContact[]>([]);
@@ -28,6 +41,13 @@ export const Settings: React.FC = () => {
   const [teamMembers, setTeamMembers] = useState<{ [deviceId: string]: DeviceMember[] }>({});
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamMsg, setTeamMsg] = useState<{ type: string; text: string }>({ type: '', text: '' });
+
+  // Masquage RGPD & Santé Matérielle
+  const [newMaskLabel, setNewMaskLabel] = useState('Voie publique');
+  const [newMaskPreset, setNewMaskPreset] = useState<'top_right' | 'top_left' | 'bottom_strip' | 'full_left'>('top_right');
+  const [isSavingMasks, setIsSavingMasks] = useState(false);
+  const [pushPermissionGranted, setPushPermissionGranted] = useState(() => notificationService.isPermissionGranted());
+  const [pushFeedbackMsg, setPushFeedbackMsg] = useState('');
 
   // Alertes E-mail d'Urgence (Photo Snapshot)
   const [emergencyAlertsEnabled, setEmergencyAlertsEnabled] = useState(true);
@@ -104,6 +124,71 @@ export const Settings: React.FC = () => {
     } catch (err: any) {
       setTeamMsg({ type: 'error', text: err.message || "Échec de la révocation de l'accès." });
     }
+  };
+
+  const handleAddPrivacyMask = async (device: Device) => {
+    let coords = { x: 0.65, y: 0, width: 0.35, height: 0.4 };
+    if (newMaskPreset === 'top_left') {
+      coords = { x: 0, y: 0, width: 0.35, height: 0.4 };
+    } else if (newMaskPreset === 'bottom_strip') {
+      coords = { x: 0, y: 0.75, width: 1.0, height: 0.25 };
+    } else if (newMaskPreset === 'full_left') {
+      coords = { x: 0, y: 0, width: 0.3, height: 1.0 };
+    }
+
+    const currentMasks = parseMasks(device.privacy_masks);
+    const newMask = {
+      label: newMaskLabel.trim() || 'Zone masquée RGPD',
+      ...coords
+    };
+    const updatedMasks = [...currentMasks, newMask];
+    const jsonString = JSON.stringify(updatedMasks);
+    setIsSavingMasks(true);
+    try {
+      await deviceService.updatePrivacyMasks(device.device_id, jsonString);
+      setOwnedDevices(prev => prev.map(d => d.id === device.id ? { ...d, privacy_masks: jsonString } : d));
+      setTeamMsg({ type: 'success', text: `Zone d'occultation RGPD ajoutée sur ${device.name}.` });
+    } catch (err: any) {
+      setTeamMsg({ type: 'error', text: err.message || "Erreur lors de la mise à jour des masques RGPD." });
+    } finally {
+      setIsSavingMasks(false);
+    }
+  };
+
+  const handleRemovePrivacyMask = async (device: Device, indexToRemove: number) => {
+    const currentMasks = parseMasks(device.privacy_masks);
+    const updatedMasks = currentMasks.filter((_, i) => i !== indexToRemove);
+    const jsonString = JSON.stringify(updatedMasks);
+    setIsSavingMasks(true);
+    try {
+      await deviceService.updatePrivacyMasks(device.device_id, jsonString);
+      setOwnedDevices(prev => prev.map(d => d.id === device.id ? { ...d, privacy_masks: jsonString } : d));
+      setTeamMsg({ type: 'success', text: `Zone d'occultation RGPD supprimée.` });
+    } catch (err: any) {
+      setTeamMsg({ type: 'error', text: err.message || "Erreur lors de la suppression du masque." });
+    } finally {
+      setIsSavingMasks(false);
+    }
+  };
+
+  const handleEnablePushNotifications = async () => {
+    const granted = await notificationService.requestPermission();
+    setPushPermissionGranted(granted);
+    if (granted) {
+      setPushFeedbackMsg("Notifications push activées avec succès !");
+    } else {
+      setPushFeedbackMsg("Permission des notifications refusée ou non supportée.");
+    }
+    setTimeout(() => setPushFeedbackMsg(''), 4000);
+  };
+
+  const handleTestPushAndAudio = () => {
+    notificationService.notifyEmergency(
+      "Test CamFire Incendie",
+      "Vérification du système d'alerte : sirène audio et notification push opérationnelles !"
+    );
+    setPushFeedbackMsg("Signal sonore et notification d'urgence déclenchés !");
+    setTimeout(() => setPushFeedbackMsg(''), 4000);
   };
 
   const handleToggleEmergencyAlerts = async () => {
@@ -232,6 +317,153 @@ export const Settings: React.FC = () => {
                     <h3 className="team-device-title">{dev.name}</h3>
                     <span className="team-device-badge">{dev.device_id}</span>
                   </div>
+
+                  {/* TÉLÉMÉTRIE MATÉRIELLE & WATCHDOG IOT */}
+                  {(() => {
+                    const isOnline = dev.last_seen_at ? (Date.now() - new Date(dev.last_seen_at).getTime()) < 180000 : false;
+                    const masks = parseMasks(dev.privacy_masks);
+                    return (
+                      <>
+                      <div className="hardware-telemetry-card">
+                        <div className="hardware-telemetry-top">
+                          <div className="hardware-status-row">
+                            <span className={`hardware-status-dot ${isOnline ? 'online' : 'offline'}`} />
+                            <strong style={{ fontSize: '12px', color: isOnline ? '#4ade80' : '#f87171' }}>
+                              {isOnline ? 'EN LIGNE · Watchdog Actif' : 'HORS-LIGNE (> 3 min)'}
+                            </strong>
+                          </div>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            Dernier ping : {dev.last_seen_at ? new Date(dev.last_seen_at).toLocaleTimeString('fr-FR') : 'Inconnu'}
+                          </span>
+                        </div>
+
+                        {!isOnline && (
+                          <div className="watchdog-alert-box">
+                            <ActivityIcon size={14} color="#ef4444" />
+                            <span>Alerte Watchdog : Ce Raspberry Pi n'émet plus de signal depuis {dev.last_seen_at ? new Date(dev.last_seen_at).toLocaleString('fr-FR') : 'inconnue'}. Vérifiez l'alimentation ou le réseau.</span>
+                          </div>
+                        )}
+
+                        <div className="hardware-metrics-grid">
+                          <div className="hardware-metric-item">
+                            <div className="metric-header">
+                              <CpuIcon size={14} color="#38bdf8" />
+                              <span>Température CPU</span>
+                            </div>
+                            <strong className="metric-value" style={{ color: (dev.cpu_temp || 0) > 75 ? '#ef4444' : (dev.cpu_temp || 0) > 60 ? '#f59e0b' : '#38bdf8' }}>
+                              {dev.cpu_temp ? `${dev.cpu_temp.toFixed(1)}°C` : 'N/A'}
+                            </strong>
+                          </div>
+
+                          <div className="hardware-metric-item">
+                            <div className="metric-header">
+                              <HardDriveIcon size={14} color="#a855f7" />
+                              <span>Disque Libre</span>
+                            </div>
+                            <strong className="metric-value" style={{ color: (dev.disk_free_gb !== undefined && dev.disk_free_gb < 2) ? '#ef4444' : '#f8fafc' }}>
+                              {dev.disk_free_gb !== undefined ? `${dev.disk_free_gb.toFixed(1)} Go` : 'N/A'}
+                            </strong>
+                          </div>
+
+                          <div className="hardware-metric-item">
+                            <div className="metric-header">
+                              <WifiIcon size={14} color="#22c55e" />
+                              <span>Réseau (RSSI)</span>
+                            </div>
+                            <strong className="metric-value">
+                              {dev.wifi_rssi !== undefined ? `${dev.wifi_rssi} dBm` : 'N/A'}
+                            </strong>
+                          </div>
+
+                          <div className="hardware-metric-item">
+                            <div className="metric-header">
+                              <BatteryIcon size={14} color="#eab308" />
+                              <span>Alimentation</span>
+                            </div>
+                            <strong className="metric-value">
+                              {dev.battery_voltage !== undefined ? `${dev.battery_voltage.toFixed(1)} V` : '5.1 V (Secteur)'}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* MASQUAGE DE CONFIDENTIALITÉ RGPD */}
+                      <div className="privacy-masking-card">
+                        <div className="privacy-masking-header">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <ShieldIcon size={16} color="#38bdf8" />
+                            <h4 style={{ margin: 0, fontSize: '13px', color: '#f8fafc' }}>Conformité RGPD & Occultation Vidéo</h4>
+                          </div>
+                          <span className="privacy-masking-count">
+                            {masks.length} zone{masks.length > 1 ? 's' : ''}
+                          </span>
+                        </div>
+
+                        <p style={{ margin: '6px 0 10px', fontSize: '11.5px', color: '#94a3b8', lineHeight: 1.4 }}>
+                          Occultez en noir les voies publiques ou propriétés mitoyennes sur le flux vidéo et les analyses IA conformément à la législation RGPD et CNIL.
+                        </p>
+
+                        {masks.length > 0 ? (
+                          <div className="privacy-masks-list">
+                            {masks.map((mask, idx) => (
+                              <div key={idx} className="privacy-mask-item">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ width: '8px', height: '8px', background: '#38bdf8', borderRadius: '2px' }} />
+                                  <span style={{ fontSize: '12px', color: '#f8fafc', fontWeight: 600 }}>{mask.label || `Masque #${idx + 1}`}</span>
+                                  <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                                    ({Math.round(mask.width * 100)}% × {Math.round(mask.height * 100)}%)
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="privacy-mask-delete"
+                                  onClick={() => handleRemovePrivacyMask(dev, idx)}
+                                  disabled={isSavingMasks}
+                                  title="Supprimer ce masque d'occultation"
+                                >
+                                  <TrashIcon size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '11.5px', color: '#64748b', fontStyle: 'italic', marginBottom: '10px' }}>
+                            Aucune zone d'occultation configurée sur cette caméra.
+                          </div>
+                        )}
+
+                        <div className="privacy-add-row">
+                          <input
+                            type="text"
+                            className="privacy-label-input"
+                            placeholder="Libellé (ex: Voie publique)"
+                            value={newMaskLabel}
+                            onChange={(e) => setNewMaskLabel(e.target.value)}
+                          />
+                          <select
+                            className="privacy-preset-select"
+                            value={newMaskPreset}
+                            onChange={(e) => setNewMaskPreset(e.target.value as any)}
+                          >
+                            <option value="top_right">Angle Haut Droit (35% x 40%)</option>
+                            <option value="top_left">Angle Haut Gauche (35% x 40%)</option>
+                            <option value="bottom_strip">Bandeau Inférieur (Route au sol)</option>
+                            <option value="full_left">Bande Latérale Gauche</option>
+                          </select>
+                          <button
+                            type="button"
+                            className="privacy-add-btn"
+                            onClick={() => handleAddPrivacyMask(dev)}
+                            disabled={isSavingMasks}
+                          >
+                            <PlusIcon size={13} />
+                            <span>Ajouter</span>
+                          </button>
+                        </div>
+                      </div>
+                      </>
+                    );
+                  })()}
 
                   {members.length > 0 ? (
                     <div className="team-members-list">
@@ -443,13 +675,47 @@ export const Settings: React.FC = () => {
 
       {/* 5. NOTIFICATIONS */}
       <section className="settings-section">
-        <h2 className="settings-section-title">NOTIFICATIONS</h2>
+        <h2 className="settings-section-title">NOTIFICATIONS & ALERTES SONORES</h2>
+        
+        {pushFeedbackMsg && (
+          <div className="settings-msg success" style={{ marginBottom: '10px' }}>
+            {pushFeedbackMsg}
+          </div>
+        )}
+
         <div className="settings-row">
           <div className="settings-row-text">
-            <strong>Notifications push</strong>
+            <strong>Notifications push du navigateur</strong>
+            <span>Alertes instantanées avec son et vibration lors d'un départ de feu</span>
           </div>
-          <button className={`toggle${notifications ? ' on' : ''}`} onClick={() => setNotifications((v) => !v)}>
-            <span className="knob" />
+          {pushPermissionGranted ? (
+            <span style={{ fontSize: '12px', color: '#4ade80', fontWeight: 700, padding: '4px 10px', background: 'rgba(34, 197, 94, 0.15)', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+              Autorisées
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ fontSize: '11.5px', padding: '6px 12px', height: 'auto' }}
+              onClick={handleEnablePushNotifications}
+            >
+              Autoriser
+            </button>
+          )}
+        </div>
+
+        <div className="settings-row" style={{ marginTop: '8px' }}>
+          <div className="settings-row-text">
+            <strong>Sirène & Bip d'alerte sonore</strong>
+            <span>Tester la tonalité d'urgence Web Audio et la notification push</span>
+          </div>
+          <button
+            type="button"
+            className="btn btn-dark"
+            style={{ fontSize: '11.5px', padding: '6px 12px', height: 'auto', border: '1px solid rgba(255,255,255,0.2)' }}
+            onClick={handleTestPushAndAudio}
+          >
+            Tester l'alerte
           </button>
         </div>
       </section>

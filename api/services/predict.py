@@ -597,6 +597,36 @@ def ensure_dns_resolvable(url: str):
     except Exception:
         pass
 
+def apply_privacy_masks(img_frame, masks_json: Optional[str] = None):
+    """Applique des masques opaques de confidentialité RGPD sur les zones privées définies."""
+    if not masks_json or img_frame is None:
+        return img_frame
+    try:
+        import json
+        masks = json.loads(masks_json) if isinstance(masks_json, str) else masks_json
+        if not isinstance(masks, list):
+            return img_frame
+        h, w = img_frame.shape[:2]
+        for m in masks:
+            if len(m) >= 4:
+                x1, y1, x2, y2 = m[:4]
+                # Coordonnées normalisées (0.0 - 1.0) ou absolues en pixels
+                if x1 <= 1.0 and x2 <= 1.0 and y1 <= 1.0 and y2 <= 1.0:
+                    px1, py1 = int(x1 * w), int(y1 * h)
+                    px2, py2 = int(x2 * w), int(y2 * h)
+                else:
+                    px1, py1 = int(x1), int(y1)
+                    px2, py2 = int(x2), int(y2)
+                px1, py1 = max(0, px1), max(0, py1)
+                px2, py2 = min(w, px2), min(h, py2)
+                # Dessiner un bloc opaque discret avec libellé
+                cv2.rectangle(img_frame, (px1, py1), (px2, py2), (18, 18, 24), -1)
+                cv2.putText(img_frame, "ZONE PRIVEE (RGPD)", (px1 + 8, min(h - 5, py1 + 22)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (120, 120, 135), 1)
+    except Exception as e:
+        print(f"[RGPD] Erreur application masques: {e}")
+    return img_frame
+
 def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
     global _current_raw_frame
     if _model is None:
@@ -604,6 +634,18 @@ def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
         return
 
     _ensure_ai_worker()
+
+    dev_privacy_masks = None
+    if device_id:
+        try:
+            from db.database import SessionLocal
+            from db.models import Device
+            with SessionLocal() as db_session:
+                dev = db_session.query(Device).filter(Device.device_id == device_id.strip()).first()
+                if dev and dev.privacy_masks:
+                    dev_privacy_masks = dev.privacy_masks
+        except Exception:
+            pass
 
     while True:
         # Normalisation du protocole pour OpenCV / FFmpeg (ex: syntaxe VLC tcp/h264:// -> tcp://)
@@ -649,6 +691,10 @@ def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
 
                 # Restauration automatique des couleurs NoIR (végétation verte, sol naturel, anti-rose)
                 frame = correct_noir_colors(frame)
+
+                # Application des masques de confidentialité RGPD à la source
+                if dev_privacy_masks:
+                    frame = apply_privacy_masks(frame, dev_privacy_masks)
 
                 # Transmettre la frame au thread IA et récupérer les dernières boîtes
                 with _ai_lock:

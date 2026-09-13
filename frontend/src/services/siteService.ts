@@ -109,5 +109,59 @@ export const siteService = {
       throw new Error("Erreur lors de la suppression du site.");
     }
     return res.json();
+  },
+
+  async getTacticalPoints(siteId: number): Promise<TacticalPoint[]> {
+    const res = await fetch(`${API_URL}/sites/${siteId}/tactical-points`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      return [];
+    }
+    return res.json();
+  },
+
+  async createTacticalPoint(siteId: number, data: TacticalPointInput): Promise<TacticalPoint> {
+    const res = await fetch(`${API_URL}/sites/${siteId}/tactical-points`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Erreur lors de l'ajout du point tactique." }));
+      throw new Error(err.detail || "Erreur lors de l'ajout du point tactique.");
+    }
+    return res.json();
+  },
+
+  async deleteTacticalPoint(pointId: number): Promise<void> {
+    const res = await fetch(`${API_URL}/sites/tactical-points/${pointId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      throw new Error("Erreur lors de la suppression du point tactique.");
+    }
   }
 };
+
+export interface TacticalPoint {
+  id: number;
+  site_id: number;
+  name: string;
+  point_type: 'water_tank' | 'hydrant' | 'pool' | 'access_path' | 'gate';
+  lat: number;
+  lng: number;
+  capacity_liters?: number;
+  notes?: string;
+  created_at: string;
+}
+
+export interface TacticalPointInput {
+  name: string;
+  point_type: 'water_tank' | 'hydrant' | 'pool' | 'access_path' | 'gate';
+  lat: number;
+  lng: number;
+  capacity_liters?: number;
+  notes?: string;
+}

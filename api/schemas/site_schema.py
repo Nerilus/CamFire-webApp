@@ -48,3 +48,25 @@ class SiteResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class TacticalPointCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    point_type: str = Field(..., description="water_tank, hydrant, pool, access_path, gate")
+    lat: float
+    lng: float
+    capacity_liters: Optional[int] = None
+    notes: Optional[str] = None
+
+class TacticalPointResponse(BaseModel):
+    id: int
+    site_id: int
+    name: str
+    point_type: str
+    lat: float
+    lng: float
+    capacity_liters: Optional[int] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
