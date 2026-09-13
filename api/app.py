@@ -142,6 +142,10 @@ base_origins = [
     "http://127.0.0.1:4173",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "https://51.15.143.236.sslip.io",
+    "http://51.15.143.236.sslip.io",
+    "https://51.15.143.236",
+    "http://51.15.143.236",
 ]
 all_origins = list(set(base_origins + cors_origins_env))
 

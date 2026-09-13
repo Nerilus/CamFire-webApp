@@ -1,3 +1,5 @@
+import { API_URL } from '../config/api';
+
 export interface Ticket {
   id: number;
   device_id: number | null;
@@ -6,8 +8,6 @@ export interface Ticket {
   description: string | null;
   created_at: string;
 }
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 class TicketService {
   private getHeaders() {
