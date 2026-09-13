@@ -88,8 +88,8 @@ def _dead_man_switch_loop():
                     if dev.last_seen_at is None:
                         continue
                     silence_duration = (now - dev.last_seen_at).total_seconds()
-                    # Si aucun signal reçu depuis > 45 secondes
-                    if silence_duration > 45:
+                    # Si aucun signal reçu depuis > 90 secondes
+                    if silence_duration > 90:
                         cooldown = (now - dev.last_tamper_alert_at).total_seconds() if dev.last_tamper_alert_at else 9999
                         if cooldown > 900: # 15 minutes entre chaque alerte pour éviter le spam
                             dev.tamper_status = "signal_lost"

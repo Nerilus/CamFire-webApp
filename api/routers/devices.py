@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Re
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import threading
 import time
 import secrets
@@ -12,6 +12,13 @@ import ssl
 import hmac
 import hashlib
 import jwt
+
+def to_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 from db.database import get_db
 from db.models import User, Device, UserDevice
@@ -238,7 +245,7 @@ def get_my_devices(current_user: User = Depends(get_current_user), db: Session =
     now = datetime.utcnow()
     for ud in user_devs:
         dev = ud.device
-        is_recent = dev.last_seen_at and (now - dev.last_seen_at).total_seconds() < 45
+        is_recent = dev.last_seen_at and (now - dev.last_seen_at).total_seconds() < 90
         status_val = "online" if is_recent else "offline"
         if dev.tamper_status == "tampered":
             status_val = "tampered"
@@ -249,8 +256,8 @@ def get_my_devices(current_user: User = Depends(get_current_user), db: Session =
             name=ud.custom_name or dev.name,
             role=ud.role or "owner",
             is_paired=True,
-            paired_at=ud.paired_at,
-            last_seen_at=dev.last_seen_at,
+            paired_at=to_utc(ud.paired_at),
+            last_seen_at=to_utc(dev.last_seen_at),
             lat=dev.lat,
             lng=dev.lng,
             status=status_val,
@@ -261,7 +268,7 @@ def get_my_devices(current_user: User = Depends(get_current_user), db: Session =
             battery_voltage=getattr(dev, "battery_voltage", None),
             privacy_masks=getattr(dev, "privacy_masks", None),
             is_maintenance_mode=getattr(dev, "is_maintenance_mode", False) or False,
-            maintenance_until=getattr(dev, "maintenance_until", None),
+            maintenance_until=to_utc(getattr(dev, "maintenance_until", None)),
             alarm_active=getattr(dev, "alarm_active", False) or False
         ))
     return results
@@ -527,8 +534,8 @@ def pair_device(
         name=custom_name,
         role=assigned_role,
         is_paired=True,
-        paired_at=new_ud.paired_at,
-        last_seen_at=device.last_seen_at,
+        paired_at=to_utc(new_ud.paired_at),
+        last_seen_at=to_utc(device.last_seen_at),
         lat=device.lat,
         lng=device.lng,
         status="online",
@@ -566,21 +573,22 @@ def update_device(
     db.commit()
     db.refresh(dev)
 
+    is_recent = dev.last_seen_at and (datetime.utcnow() - dev.last_seen_at).total_seconds() < 90
     return DeviceResponse(
         id=dev.id,
         device_id=dev.device_id,
         name=ud.custom_name or dev.name,
         role=ud.role or "owner",
         is_paired=True,
-        paired_at=ud.paired_at,
-        last_seen_at=dev.last_seen_at,
+        paired_at=to_utc(ud.paired_at),
+        last_seen_at=to_utc(dev.last_seen_at),
         lat=dev.lat,
         lng=dev.lng,
-        status="online" if dev.last_seen_at and (datetime.utcnow() - dev.last_seen_at).total_seconds() < 45 else "offline",
+        status="online" if is_recent else "offline",
         tamper_status=dev.tamper_status or "normal",
         cpu_temp=dev.cpu_temp,
         is_maintenance_mode=getattr(dev, "is_maintenance_mode", False) or False,
-        maintenance_until=getattr(dev, "maintenance_until", None),
+        maintenance_until=to_utc(getattr(dev, "maintenance_until", None)),
         alarm_active=getattr(dev, "alarm_active", False) or False
     )
 

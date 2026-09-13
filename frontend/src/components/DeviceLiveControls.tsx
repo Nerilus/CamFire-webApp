@@ -24,6 +24,13 @@ export interface DeviceLiveControlsProps {
   onDeviceUpdate?: (updated: Partial<DeviceLike>) => void;
 }
 
+const parseUtcDate = (raw?: string | null): Date | null => {
+  if (!raw) return null;
+  const iso = raw.endsWith('Z') || raw.includes('+') ? raw : `${raw}Z`;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, onDeviceUpdate }) => {
   // Push-to-Talk (Parler)
   const [isRecording, setIsRecording] = useState(false);
@@ -188,7 +195,7 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
           <WrenchIcon size={16} className="wrench-pulse" />
           <div className="maintenance-banner-text">
             <strong>Mode Travaux actif</strong>
-            <span>Détection incendie suspendue {device.maintenance_until ? `jusqu'à ${new Date(device.maintenance_until).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>
+            <span>Détection incendie suspendue {device.maintenance_until && parseUtcDate(device.maintenance_until) ? `jusqu'à ${parseUtcDate(device.maintenance_until)!.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>
           </div>
           <button
             type="button"
