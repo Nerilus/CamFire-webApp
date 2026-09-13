@@ -350,8 +350,8 @@ export const Settings: React.FC = () => {
                               <CpuIcon size={14} color="#38bdf8" />
                               <span>Température CPU</span>
                             </div>
-                            <strong className="metric-value" style={{ color: (dev.cpu_temp || 0) > 75 ? '#ef4444' : (dev.cpu_temp || 0) > 60 ? '#f59e0b' : '#38bdf8' }}>
-                              {dev.cpu_temp ? `${dev.cpu_temp.toFixed(1)}°C` : 'N/A'}
+                            <strong className="metric-value" style={{ color: (typeof dev.cpu_temp === 'number' && dev.cpu_temp > 75) ? '#ef4444' : (typeof dev.cpu_temp === 'number' && dev.cpu_temp > 60) ? '#f59e0b' : '#38bdf8' }}>
+                              {typeof dev.cpu_temp === 'number' ? `${dev.cpu_temp.toFixed(1)}°C` : 'N/A'}
                             </strong>
                           </div>
 
@@ -360,8 +360,8 @@ export const Settings: React.FC = () => {
                               <HardDriveIcon size={14} color="#a855f7" />
                               <span>Disque Libre</span>
                             </div>
-                            <strong className="metric-value" style={{ color: (dev.disk_free_gb !== undefined && dev.disk_free_gb < 2) ? '#ef4444' : '#f8fafc' }}>
-                              {dev.disk_free_gb !== undefined ? `${dev.disk_free_gb.toFixed(1)} Go` : 'N/A'}
+                            <strong className="metric-value" style={{ color: (typeof dev.disk_free_gb === 'number' && dev.disk_free_gb < 2) ? '#ef4444' : '#f8fafc' }}>
+                              {typeof dev.disk_free_gb === 'number' ? `${dev.disk_free_gb.toFixed(1)} Go` : 'N/A'}
                             </strong>
                           </div>
 
@@ -371,7 +371,7 @@ export const Settings: React.FC = () => {
                               <span>Réseau (RSSI)</span>
                             </div>
                             <strong className="metric-value">
-                              {dev.wifi_rssi !== undefined ? `${dev.wifi_rssi} dBm` : 'N/A'}
+                              {dev.wifi_rssi != null ? `${dev.wifi_rssi} dBm` : 'N/A'}
                             </strong>
                           </div>
 
@@ -381,7 +381,7 @@ export const Settings: React.FC = () => {
                               <span>Alimentation</span>
                             </div>
                             <strong className="metric-value">
-                              {dev.battery_voltage !== undefined ? `${dev.battery_voltage.toFixed(1)} V` : '5.1 V (Secteur)'}
+                              {typeof dev.battery_voltage === 'number' ? `${dev.battery_voltage.toFixed(1)} V` : '5.1 V (Secteur)'}
                             </strong>
                           </div>
                         </div>
