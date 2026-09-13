@@ -377,7 +377,7 @@ const handleResetPassword = async (e: React.FormEvent) => {
 
             {/* Timer de péremption */}
             <div style={styles.timerRow}>
-              <span>⏱️ Expiration :</span>
+              <span>Expiration :</span>
               <strong style={{ color: timeLeft < 60 ? '#ef4444' : '#00d2ff' }}>
                 {formatTime(timeLeft)}
               </strong>

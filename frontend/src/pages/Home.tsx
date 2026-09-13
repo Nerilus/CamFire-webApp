@@ -696,7 +696,13 @@ export const Home: React.FC = () => {
               
               {isTicketSuccess ? (
                 <div style={{ textAlign: 'center', padding: '10px 0' }}>
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+                    <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(34, 197, 94, 0.15)', border: '2px solid var(--safe)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--safe)' }}>
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </div>
+                  </div>
                   <h3 style={{ marginTop: 0, marginBottom: '12px' }}>Demande envoyée</h3>
                   <p style={{ color: 'var(--text-dim)', marginBottom: '24px', fontSize: '14px', lineHeight: '1.5' }}>
                     Votre demande a bien été soumise. Notre équipe technique a été notifiée et va s'en charger au plus vite.

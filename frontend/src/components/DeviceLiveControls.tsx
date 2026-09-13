@@ -87,7 +87,7 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
           setTalkFeedback("Transmission au haut-parleur...");
           try {
             await deviceService.speakToDevice(device.device_id, audioBlob);
-            setTalkFeedback("✓ Diffusé sur le Raspberry Pi !");
+            setTalkFeedback("Diffusé sur le haut-parleur");
             setTimeout(() => setTalkFeedback(null), 3500);
           } catch (err: any) {
             setTalkFeedback("Erreur: " + err.message);
@@ -221,7 +221,7 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
           </button>
 
           {talkFeedback && (
-            <div className={`talk-feedback ${talkFeedback.includes('✓') ? 'success' : talkFeedback.includes('Erreur') ? 'error' : ''}`}>
+            <div className={`talk-feedback ${talkFeedback.includes('Diffusé') ? 'success' : talkFeedback.includes('Erreur') ? 'error' : ''}`}>
               {talkFeedback}
             </div>
           )}
@@ -251,7 +251,7 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
         <div className="control-card alarm-card">
           <div className="control-header">
             <span className="control-tag">Sécurité & Dissuasion</span>
-            {isAlarmActive && <span className="alarm-flashing-tag">🚨 SIRÈNE ACTIVE</span>}
+            {isAlarmActive && <span className="alarm-flashing-tag">SIRÈNE ACTIVE</span>}
           </div>
 
           <button
