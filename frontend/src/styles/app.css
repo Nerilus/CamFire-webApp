@@ -104,58 +104,95 @@
   left: 0;
   right: 0;
   display: flex;
-  background: #0d0d11;
-  border-top: 1px solid var(--border);
-  padding: 8px 4px calc(env(safe-area-inset-bottom, 0px) + 8px);
-  z-index: 100;
+  align-items: center;
+  justify-content: space-around;
+  gap: 4px;
+  background: rgba(13, 13, 17, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 8px calc(env(safe-area-inset-bottom, 0px) + 6px);
+  z-index: 1000;
 }
 
 @media (min-width: 768px) {
   .bottom-nav {
-    max-width: 600px;
+    max-width: 520px;
     margin: 0 auto;
-    border: 1px solid var(--border);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-bottom: none;
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.6);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.65);
+    padding: 6px 14px 6px;
   }
 }
 
-
 .bottom-nav .nav-item {
   flex: 1;
+  max-width: 90px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  background: none;
+  justify-content: center;
+  gap: 4px;
+  background: transparent;
   border: none;
   color: var(--text-faint);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.1px;
+  text-decoration: none;
   cursor: pointer;
-  padding: 5px 0 3px;
+  padding: 6px 4px 6px;
+  border-radius: 10px;
   position: relative;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bottom-nav .nav-item:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .bottom-nav .nav-item svg {
   width: 20px;
   height: 20px;
+  transition: transform 0.2s ease, stroke 0.2s ease;
+}
+
+.bottom-nav .nav-item span {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  max-width: 100%;
 }
 
 .bottom-nav .nav-item.active {
-  color: var(--flame-end);
+  color: #ff6a00;
+  background: rgba(255, 106, 0, 0.08);
+}
+
+.bottom-nav .nav-item.active svg {
+  stroke: #ff6a00;
+  transform: translateY(-1px);
+}
+
+.bottom-nav .nav-item.active span {
+  font-weight: 700;
+  color: #ff7a1a;
 }
 
 .bottom-nav .nav-item.active::after {
   content: '';
   position: absolute;
-  bottom: -2px;
-  width: 22px;
-  height: 2px;
+  bottom: 2px;
+  width: 16px;
+  height: 2.5px;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--flame-start), var(--flame-end));
+  background: linear-gradient(90deg, #ff4500, #ff8c00);
+  box-shadow: 0 0 6px rgba(255, 69, 0, 0.6);
 }
 
 /* ---------- Boutons & badges génériques ---------- */
