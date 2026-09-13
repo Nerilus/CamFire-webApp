@@ -1405,3 +1405,487 @@
 .custom-tactical-popup .leaflet-popup-tip {
   background: rgba(15, 23, 42, 0.95);
 }
+
+/* ==========================================================================
+   MODALE TACTIQUE DFCI & DÉTECTION OPENDATA / SDIS
+   ========================================================================== */
+
+.tactical-modal-card {
+  max-width: 580px !important;
+  border: 1px solid rgba(56, 189, 248, 0.25) !important;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(56, 189, 248, 0.1) !important;
+}
+
+.tactical-modal-tabs {
+  display: flex;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tactical-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tactical-tab-btn:hover {
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tactical-tab-btn.active {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.15);
+}
+
+.tactical-tab-badge {
+  background: rgba(56, 189, 248, 0.25);
+  color: #38bdf8;
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.tactical-scan-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tactical-api-banner {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08) 0%, rgba(30, 58, 138, 0.12) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tactical-api-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #38bdf8;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tactical-api-desc {
+  margin: 0;
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+.tactical-radius-pills {
+  display: flex;
+  gap: 8px;
+}
+
+.tactical-radius-btn {
+  flex: 1;
+  background: #0d0d14;
+  border: 1px solid #28283a;
+  color: #94a3b8;
+  padding: 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tactical-radius-btn:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #e2e8f0;
+}
+
+.tactical-radius-btn.active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+}
+
+.tactical-btn-scan {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 10px;
+  padding: 11px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+}
+
+.tactical-btn-scan:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  box-shadow: 0 4px 18px rgba(56, 189, 248, 0.45);
+}
+
+.tactical-btn-scan:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tactical-feedback-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.tactical-feedback-alert.success {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+.tactical-feedback-alert.info {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+}
+
+.tactical-scan-results-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(13, 17, 23, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.tactical-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tactical-results-count {
+  font-size: 12.5px;
+  color: #cbd5e1;
+}
+
+.tactical-btn-import-all {
+  background: rgba(56, 189, 248, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  border-radius: 7px;
+  padding: 5px 11px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tactical-btn-import-all:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.3);
+}
+
+.tactical-btn-import-all:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tactical-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 230px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tactical-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #090c13;
+  border: 1px solid #1e293b;
+  border-radius: 9px;
+  padding: 9px 12px;
+  transition: all 0.15s ease;
+}
+
+.tactical-result-item:hover {
+  border-color: #334155;
+  background: #0d121c;
+}
+
+.tactical-result-item.imported {
+  opacity: 0.7;
+  border-color: rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.03);
+}
+
+.tactical-result-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tactical-icon-hydrant {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tactical-icon-tank {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 8px;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tactical-result-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tactical-result-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.tactical-result-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tactical-dist-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  padding: 2px 7px;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  white-space: nowrap;
+}
+
+.tactical-result-specs {
+  font-size: 10.5px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tactical-result-action {
+  flex-shrink: 0;
+}
+
+.tactical-btn-import-single {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.tactical-btn-import-single:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+.badge-already-imported {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: #4ade80;
+  font-weight: 700;
+  background: rgba(34, 197, 94, 0.12);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  white-space: nowrap;
+}
+
+.tactical-empty-results {
+  text-align: center;
+  padding: 16px 10px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* Formulaire Manuel */
+.tactical-manual-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tactical-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+  gap: 8px;
+}
+
+.tactical-type-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  background: #0d0d14;
+  border: 1px solid #28283a;
+  border-radius: 9px;
+  color: #94a3b8;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tactical-type-chip:hover {
+  border-color: #475569;
+  color: #cbd5e1;
+}
+
+.tactical-capacity-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.tactical-capacity-presets {
+  display: flex;
+  gap: 6px;
+}
+
+.tactical-cap-pill {
+  flex: 1;
+  background: #0d0d14;
+  border: 1px solid #28283a;
+  color: #94a3b8;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tactical-cap-pill:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #cbd5e1;
+}
+
+.tactical-cap-pill.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+}
+
+.tactical-textarea {
+  resize: vertical;
+  min-height: 70px;
+  font-family: inherit;
+  line-height: 1.45;
+}
+
+/* Fallbacks généraux pour formulaires */
+.site-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.site-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.site-form-group label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.site-form-group input,
+.site-form-group select,
+.site-form-group textarea {
+  background: #0d0d14;
+  border: 1px solid #28283a;
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.site-form-group input:focus,
+.site-form-group select:focus,
+.site-form-group textarea:focus {
+  border-color: #ff4400;
+  box-shadow: 0 0 0 2px rgba(255, 68, 0, 0.2);
+}

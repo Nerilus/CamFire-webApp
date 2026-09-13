@@ -428,3 +428,33 @@ export const BatteryIcon: React.FC<IconProps & { style?: React.CSSProperties }> 
     <line x1="23" y1="11" x2="23" y2="13" />
   </svg>
 );
+
+export const SearchIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <circle cx="11" cy="11" r="8" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);
+
+export const DatabaseIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <ellipse cx="12" cy="5" rx="9" ry="3" />
+    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+  </svg>
+);
+
+export const TruckIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <rect x="1" y="3" width="15" height="13" rx="2" />
+    <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+    <circle cx="5.5" cy="18.5" r="2.5" />
+    <circle cx="18.5" cy="18.5" r="2.5" />
+  </svg>
+);
+
+export const SparklesIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <path d="M12 3l1.912 5.813a2 2 0 001.275 1.275L21 12l-5.813 1.912a2 2 0 00-1.275 1.275L12 21l-1.912-5.813a2 2 0 00-1.275-1.275L3 12l5.813-1.912a2 2 0 001.275-1.275L12 3z" />
+  </svg>
+);

@@ -142,6 +142,30 @@ export const siteService = {
     if (!res.ok) {
       throw new Error("Erreur lors de la suppression du point tactique.");
     }
+  },
+
+  async scanOsmHydrants(siteId: number, radiusMeters: number = 2500): Promise<OsmHydrantScanResponse> {
+    const res = await fetch(`${API_URL}/sites/${siteId}/scan-osm-hydrants?radius=${radiusMeters}`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Erreur lors du scan OpenData." }));
+      throw new Error(err.detail || "Erreur lors du scan OpenData.");
+    }
+    return res.json();
+  },
+
+  async importOsmHydrants(siteId: number, radiusMeters: number = 2500, selectedOsmIds?: number[]): Promise<OsmHydrantImportResponse> {
+    const res = await fetch(`${API_URL}/sites/${siteId}/import-osm-hydrants`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ radius_meters: radiusMeters, selected_osm_ids: selectedOsmIds })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Erreur lors de l'import OpenData." }));
+      throw new Error(err.detail || "Erreur lors de l'import OpenData.");
+    }
+    return res.json();
   }
 };
 
@@ -164,4 +188,29 @@ export interface TacticalPointInput {
   lng: number;
   capacity_liters?: number;
   notes?: string;
+}
+
+export interface OsmHydrantItem {
+  osm_id: number;
+  name: string;
+  point_type: 'water_tank' | 'hydrant' | 'pool' | 'access_path' | 'gate';
+  lat: number;
+  lng: number;
+  distance_meters: number;
+  capacity_liters?: number;
+  notes?: string;
+  already_imported?: boolean;
+}
+
+export interface OsmHydrantScanResponse {
+  total_found: number;
+  radius_meters: number;
+  items: OsmHydrantItem[];
+}
+
+export interface OsmHydrantImportResponse {
+  imported_count: number;
+  already_existing: number;
+  total_found: number;
+  points: TacticalPoint[];
 }

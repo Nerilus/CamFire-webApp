@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional, Union
+import math
+import re
+import logging
+import httpx
 
 from db.database import get_db
 from db.models import User, Device, UserDevice, Site, TacticalPoint
 from schemas.site_schema import (
     SiteCreate, SiteUpdate, SiteResponse, SiteDeviceSummary, SiteAssignDeviceRequest,
-    TacticalPointCreate, TacticalPointResponse
+    TacticalPointCreate, TacticalPointResponse,
+    OsmHydrantItem, OsmHydrantScanResponse, OsmHydrantImportRequest, OsmHydrantImportResponse
 )
 from routers.auth import get_current_user
 
@@ -263,4 +268,239 @@ def delete_tactical_point(
     db.delete(pt)
     db.commit()
     return {"message": "Point tactique supprimé avec succès."}
+
+
+# ---------- Intégration API OpenData SDIS & OpenStreetMap (PEI / DFCI) ----------
+
+logger = logging.getLogger(__name__)
+
+OVERPASS_SERVERS = [
+    "https://overpass.openstreetmap.fr/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter"
+]
+
+def calculate_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> int:
+    """Calcule la distance géodésique en mètres entre deux coordonnées GPS."""
+    R = 6371000
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return int(R * c)
+
+
+async def fetch_osm_water_points(lat: float, lng: float, radius: int) -> list:
+    """Interroge les serveurs Overpass API pour récupérer les bornes incendie et cuves DFCI."""
+    query = f"""
+    [out:json][timeout:15];
+    (
+      node["emergency"="fire_hydrant"](around:{radius},{lat},{lng});
+      node["emergency"="water_tank"](around:{radius},{lat},{lng});
+      node["emergency"="suction_point"](around:{radius},{lat},{lng});
+      node["amenity"="fire_hydrant"](around:{radius},{lat},{lng});
+      node["water_source"](around:{radius},{lat},{lng});
+    );
+    out body 100;
+    """
+    headers = {
+        "User-Agent": "CamFire-App/2.0 (TacticalDFCI; contact@camfire.fr)"
+    }
+
+    async with httpx.AsyncClient(timeout=14.0, verify=False) as client:
+        for server in OVERPASS_SERVERS:
+            try:
+                resp = await client.post(server, data={"data": query}, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    elements = data.get("elements", [])
+                    logger.info(f"Overpass {server}: {len(elements)} éléments trouvés")
+                    return elements
+                else:
+                    logger.warning(f"Overpass {server} a répondu avec code {resp.status_code}")
+            except Exception as e:
+                logger.warning(f"Overpass {server} erreur: {e}")
+                continue
+    return []
+
+
+def parse_osm_node_to_item(el: dict, center_lat: float, center_lng: float) -> dict:
+    """Convertit un nœud brut OpenStreetMap en objet structuré DFCI."""
+    osm_id = el.get("id")
+    lat = float(el.get("lat"))
+    lng = float(el.get("lon"))
+    tags = el.get("tags", {})
+
+    emergency = tags.get("emergency", "")
+    amenity = tags.get("amenity", "")
+    water_source = tags.get("water_source", "")
+
+    if emergency == "water_tank" or water_source in ["water_tank", "reservoir"]:
+        point_type = "water_tank"
+        default_name = "Citerne DFCI"
+    elif emergency == "suction_point" or water_source in ["pond", "lake"]:
+        point_type = "pool"
+        default_name = "Point d'aspiration PEI"
+    else:
+        point_type = "hydrant"
+        default_name = "Poteau Incendie PEI"
+
+    ref = tags.get("ref") or tags.get("fire_hydrant:ref") or tags.get("name")
+    if ref:
+        name = f"{default_name} #{ref}"
+    else:
+        name = f"{default_name} ({str(osm_id)[-4:]})"
+
+    capacity_liters = None
+    raw_cap = tags.get("capacity") or tags.get("fire_hydrant:flow")
+    if raw_cap:
+        nums = re.findall(r'\d+', str(raw_cap))
+        if nums:
+            val = int(nums[0])
+            if "m3" in str(raw_cap).lower() or val <= 500:
+                capacity_liters = val * 1000
+            else:
+                capacity_liters = val
+    elif point_type == "hydrant":
+        capacity_liters = 60000
+    elif point_type == "water_tank":
+        capacity_liters = 30000
+
+    notes_parts = []
+    h_type = tags.get("fire_hydrant:type")
+    if h_type:
+        notes_parts.append(f"Type: {h_type}")
+    h_diam = tags.get("fire_hydrant:diameter")
+    if h_diam:
+        notes_parts.append(f"Diamètre: DN{h_diam}")
+    h_press = tags.get("fire_hydrant:pressure")
+    if h_press:
+        notes_parts.append(f"Pression: {h_press}")
+    h_pos = tags.get("fire_hydrant:position")
+    if h_pos:
+        notes_parts.append(f"Position: {h_pos}")
+    operator = tags.get("operator")
+    if operator:
+        notes_parts.append(f"SDIS / Gestionnaire: {operator}")
+    notes_parts.append("Source: OpenData SDIS/OSM")
+
+    dist = calculate_distance_meters(center_lat, center_lng, lat, lng)
+
+    return {
+        "osm_id": osm_id,
+        "name": name[:120],
+        "point_type": point_type,
+        "lat": lat,
+        "lng": lng,
+        "distance_meters": dist,
+        "capacity_liters": capacity_liters,
+        "notes": " · ".join(notes_parts)[:250]
+    }
+
+
+@router.get("/{site_id}/scan-osm-hydrants", response_model=OsmHydrantScanResponse)
+async def scan_osm_hydrants(
+    site_id: int,
+    radius: int = 2500,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Scanne les bornes incendie et cuves DFCI répertoriées en OpenData (SDIS / OpenStreetMap) autour du site."""
+    site = db.query(Site).filter(Site.id == site_id, Site.user_id == current_user.id).first()
+    if not site:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site introuvable.")
+
+    radius = max(200, min(radius, 20000))
+    elements = await fetch_osm_water_points(site.lat, site.lng, radius)
+
+    existing_pts = db.query(TacticalPoint).filter(TacticalPoint.site_id == site_id).all()
+
+    items = []
+    for el in elements:
+        try:
+            item_dict = parse_osm_node_to_item(el, site.lat, site.lng)
+            is_already = any(
+                calculate_distance_meters(pt.lat, pt.lng, item_dict["lat"], item_dict["lng"]) < 15
+                for pt in existing_pts
+            )
+            item_dict["already_imported"] = is_already
+            items.append(OsmHydrantItem(**item_dict))
+        except Exception:
+            continue
+
+    items.sort(key=lambda x: x.distance_meters)
+    return OsmHydrantScanResponse(
+        total_found=len(items),
+        radius_meters=radius,
+        items=items
+    )
+
+
+@router.post("/{site_id}/import-osm-hydrants", response_model=OsmHydrantImportResponse)
+async def import_osm_hydrants(
+    site_id: int,
+    req: OsmHydrantImportRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Importe automatiquement les bornes incendie officielles détectées autour du site comme points DFCI."""
+    site = db.query(Site).filter(Site.id == site_id, Site.user_id == current_user.id).first()
+    if not site:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site introuvable.")
+
+    radius = max(200, min(req.radius_meters, 20000))
+    elements = await fetch_osm_water_points(site.lat, site.lng, radius)
+
+    existing_pts = db.query(TacticalPoint).filter(TacticalPoint.site_id == site_id).all()
+
+    imported_list = []
+    already_existing_count = 0
+
+    selected_set = set(req.selected_osm_ids) if req.selected_osm_ids else None
+
+    for el in elements:
+        osm_id = el.get("id")
+        if selected_set is not None and osm_id not in selected_set:
+            continue
+
+        try:
+            item_dict = parse_osm_node_to_item(el, site.lat, site.lng)
+
+            is_already = any(
+                calculate_distance_meters(pt.lat, pt.lng, item_dict["lat"], item_dict["lng"]) < 15
+                for pt in existing_pts
+            )
+            if is_already:
+                already_existing_count += 1
+                continue
+
+            new_pt = TacticalPoint(
+                site_id=site_id,
+                name=item_dict["name"],
+                point_type=item_dict["point_type"],
+                lat=item_dict["lat"],
+                lng=item_dict["lng"],
+                capacity_liters=item_dict["capacity_liters"],
+                notes=item_dict["notes"]
+            )
+            db.add(new_pt)
+            existing_pts.append(new_pt)
+            imported_list.append(new_pt)
+        except Exception:
+            continue
+
+    if imported_list:
+        db.commit()
+        for p in imported_list:
+            db.refresh(p)
+
+    return OsmHydrantImportResponse(
+        imported_count=len(imported_list),
+        already_existing=already_existing_count,
+        total_found=len(elements),
+        points=imported_list
+    )
 
