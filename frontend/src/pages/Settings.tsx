@@ -24,6 +24,13 @@ const parseMasks = (raw?: string | null): Array<{ label: string; x: number; y: n
   }
 };
 
+const parseUtcDate = (raw?: string | null): Date | null => {
+  if (!raw) return null;
+  const iso = raw.endsWith('Z') || raw.includes('+') ? raw : `${raw}Z`;
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 export const Settings: React.FC = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -43,9 +50,9 @@ export const Settings: React.FC = () => {
   const [teamMsg, setTeamMsg] = useState<{ type: string; text: string }>({ type: '', text: '' });
 
   // Masquage RGPD & Santé Matérielle
-  const [newMaskLabel, setNewMaskLabel] = useState('Voie publique');
-  const [newMaskPreset, setNewMaskPreset] = useState<'top_right' | 'top_left' | 'bottom_strip' | 'full_left'>('top_right');
   const [isSavingMasks, setIsSavingMasks] = useState(false);
+  const [newMaskLabel, setNewMaskLabel] = useState('');
+  const [newMaskPreset, setNewMaskPreset] = useState<'top_right' | 'top_left' | 'bottom_strip' | 'full_left'>('top_right');
   const [pushPermissionGranted, setPushPermissionGranted] = useState(() => notificationService.isPermissionGranted());
   const [pushFeedbackMsg, setPushFeedbackMsg] = useState('');
 
@@ -64,8 +71,15 @@ export const Settings: React.FC = () => {
 
   useEffect(() => {
     loadContacts();
-    loadTeamData();
+    loadTeamData(false);
     loadEmergencyAlertSettings();
+
+    // Auto-rafraîchissement périodique silencieux de la télémétrie Raspberry Pi (Watchdog live)
+    const intervalTimer = setInterval(() => {
+      loadTeamData(true);
+    }, 6000);
+
+    return () => clearInterval(intervalTimer);
   }, []);
 
   const loadContacts = async () => {
@@ -77,8 +91,8 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const loadTeamData = async () => {
-    setTeamLoading(true);
+  const loadTeamData = async (silent: boolean = false) => {
+    if (!silent) setTeamLoading(true);
     try {
       const myDevs = await deviceService.getMyDevices();
       const owners = myDevs.filter((d) => d.role === 'owner');
@@ -98,7 +112,7 @@ export const Settings: React.FC = () => {
     } catch (e) {
       console.error('Erreur chargement équipe:', e);
     } finally {
-      setTeamLoading(false);
+      if (!silent) setTeamLoading(false);
     }
   };
 
@@ -320,7 +334,9 @@ export const Settings: React.FC = () => {
 
                   {/* TÉLÉMÉTRIE MATÉRIELLE & WATCHDOG IOT */}
                   {(() => {
-                    const isOnline = dev.last_seen_at ? (Date.now() - new Date(dev.last_seen_at).getTime()) < 180000 : false;
+                    const lastSeenDate = parseUtcDate(dev.last_seen_at);
+                    const diffMs = lastSeenDate ? (Date.now() - lastSeenDate.getTime()) : Infinity;
+                    const isOnline = dev.status === 'online' || diffMs < 120000;
                     const masks = parseMasks(dev.privacy_masks);
                     return (
                       <>
@@ -329,18 +345,18 @@ export const Settings: React.FC = () => {
                           <div className="hardware-status-row">
                             <span className={`hardware-status-dot ${isOnline ? 'online' : 'offline'}`} />
                             <strong style={{ fontSize: '12px', color: isOnline ? '#4ade80' : '#f87171' }}>
-                              {isOnline ? 'EN LIGNE · Watchdog Actif' : 'HORS-LIGNE (> 3 min)'}
+                              {isOnline ? 'EN LIGNE · Watchdog Actif' : 'HORS-LIGNE (> 2 min)'}
                             </strong>
                           </div>
                           <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            Dernier ping : {dev.last_seen_at ? new Date(dev.last_seen_at).toLocaleTimeString('fr-FR') : 'Inconnu'}
+                            Dernier ping : {lastSeenDate ? lastSeenDate.toLocaleTimeString('fr-FR') : 'Inconnu'}
                           </span>
                         </div>
 
                         {!isOnline && (
                           <div className="watchdog-alert-box">
                             <ActivityIcon size={14} color="#ef4444" />
-                            <span>Alerte Watchdog : Ce Raspberry Pi n'émet plus de signal depuis {dev.last_seen_at ? new Date(dev.last_seen_at).toLocaleString('fr-FR') : 'inconnue'}. Vérifiez l'alimentation ou le réseau.</span>
+                            <span>Alerte Watchdog : Ce Raspberry Pi n'émet plus de signal depuis {lastSeenDate ? lastSeenDate.toLocaleString('fr-FR') : 'inconnue'}. Vérifiez l'alimentation ou le réseau.</span>
                           </div>
                         )}
 

@@ -37,7 +37,7 @@ class User(Base):
         now = datetime.utcnow()
         for ud in self.user_devices:
             dev = ud.device
-            is_recent = dev.last_seen_at and (now - dev.last_seen_at).total_seconds() < 45
+            is_recent = dev.last_seen_at and (now - dev.last_seen_at).total_seconds() < 90
             status_val = "online" if is_recent else "offline"
             if dev.tamper_status == "tampered":
                 status_val = "tampered"
