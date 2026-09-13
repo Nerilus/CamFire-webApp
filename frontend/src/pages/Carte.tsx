@@ -5,13 +5,14 @@ import L from 'leaflet';
 import { 
   FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, 
   FlashIcon, TrashIcon, GpsIcon, PlusIcon, GlobeIcon, WindIcon, DropletIcon, 
-  PhoneIcon, CopyIcon, CheckCircleIcon 
+  PhoneIcon, CopyIcon, CheckCircleIcon, SearchIcon, DatabaseIcon, TruckIcon,
+  SparklesIcon, LockIcon
 } from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
 import { DeviceLiveControls } from '../components/DeviceLiveControls';
 import { fetchZonesWeather } from '../services/weatherService';
 import { deviceService, type Device } from '../services/deviceService';
-import { siteService, type Site, type SiteCreateInput, type TacticalPoint } from '../services/siteService';
+import { siteService, type Site, type SiteCreateInput, type TacticalPoint, type OsmHydrantItem } from '../services/siteService';
 import './Carte.css';
 
 import { API_URL } from '../config/api';
@@ -243,9 +244,20 @@ export const Carte: React.FC = () => {
   const [tacticalPoints, setTacticalPoints] = useState<TacticalPoint[]>([]);
   const [showTacticalPoints, setShowTacticalPoints] = useState(true);
   const [isAddTacticalModalOpen, setIsAddTacticalModalOpen] = useState(false);
-  const [newPtName, setNewPtName] = useState('');
+  const [tacticalModalTab, setTacticalModalTab] = useState<'scan' | 'manual'>('scan');
+
+  // Détection automatique OpenData / SDIS (Overpass API)
+  const [scanRadius, setScanRadius] = useState<number>(2500);
+  const [isScanningOsm, setIsScanningOsm] = useState(false);
+  const [scannedItems, setScannedItems] = useState<OsmHydrantItem[]>([]);
+  const [scanPerformed, setScanPerformed] = useState(false);
+  const [isImportingOsm, setIsImportingOsm] = useState(false);
+  const [importFeedback, setImportFeedback] = useState<string | null>(null);
+
+  // Saisie manuelle DFCI
+  const [newPtName, setNewPtName] = useState('Cuve d\'eau DFCI');
   const [newPtType, setNewPtType] = useState<'water_tank' | 'hydrant' | 'pool' | 'access_path' | 'gate'>('water_tank');
-  const [newPtCapacity, setNewPtCapacity] = useState<number | ''>(5000);
+  const [newPtCapacity, setNewPtCapacity] = useState<number | ''>(30000);
   const [newPtNotes, setNewPtNotes] = useState('');
   const [isSubmittingTactical, setIsSubmittingTactical] = useState(false);
 
@@ -488,6 +500,63 @@ export const Carte: React.FC = () => {
       alert(err.message || "Erreur lors de la suppression.");
     }
   };
+
+  // Scan des bornes incendie & cuves DFCI via l'API OpenData SDIS
+  const handleScanOsmHydrants = async (radiusToUse?: number) => {
+    if (!selectedSiteId) return;
+    const r = radiusToUse ?? scanRadius;
+    setIsScanningOsm(true);
+    setImportFeedback(null);
+    try {
+      const res = await siteService.scanOsmHydrants(selectedSiteId, r);
+      setScannedItems(res.items);
+      setScanPerformed(true);
+    } catch (err: any) {
+      console.warn("Scan OpenData warning:", err);
+      setScanPerformed(true);
+    } finally {
+      setIsScanningOsm(false);
+    }
+  };
+
+  // Importation des bornes officielles sur le site
+  const handleImportOsmHydrants = async (selectedIds?: number[]) => {
+    if (!selectedSiteId) return;
+    setIsImportingOsm(true);
+    setImportFeedback(null);
+    try {
+      const res = await siteService.importOsmHydrants(selectedSiteId, scanRadius, selectedIds);
+      if (res.imported_count > 0) {
+        const updated = await siteService.getTacticalPoints(selectedSiteId);
+        setTacticalPoints(updated);
+        setImportFeedback(`Succès : ${res.imported_count} repère(s) officiel(s) ajouté(s) à la carte !`);
+        setScannedItems(prev => prev.map(item => {
+          if (!selectedIds || selectedIds.includes(item.osm_id)) {
+            return { ...item, already_imported: true };
+          }
+          return item;
+        }));
+      } else if (res.already_existing > 0) {
+        setImportFeedback(`Toutes les bornes détectées (${res.already_existing}) sont déjà enregistrées sur le plan.`);
+      } else {
+        setImportFeedback("Aucun nouveau point n'a été importé.");
+      }
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de l'import OpenData.");
+    } finally {
+      setIsImportingOsm(false);
+    }
+  };
+
+  // Auto-scan quand la modale s'ouvre pour le site sélectionné
+  useEffect(() => {
+    if (isAddTacticalModalOpen && selectedSiteId) {
+      setImportFeedback(null);
+      if (!scanPerformed && !isScanningOsm) {
+        handleScanOsmHydrants(scanRadius);
+      }
+    }
+  }, [isAddTacticalModalOpen, selectedSiteId]);
 
   const selectedSite = sites.find(s => s.id === selectedSiteId);
 
@@ -1534,91 +1603,298 @@ export const Carte: React.FC = () => {
         </div>
       )}
 
-      {/* Modal Ajout Point DFCI Tactique */}
+      {/* Modal Points Tactiques & Bornes DFCI (OpenData / SDIS & Manuel) */}
       {isAddTacticalModalOpen && selectedSite && (
         <div className="site-modal-backdrop" onClick={() => setIsAddTacticalModalOpen(false)}>
-          <div className="site-modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className="site-modal-card tactical-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="site-modal-header">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#38bdf8' }}>
-                <DropletIcon size={18} />
-                <span>Ajouter un Point Tactique DFCI</span>
-              </h3>
-              <button type="button" className="site-modal-close" onClick={() => setIsAddTacticalModalOpen(false)}>
-                <XIcon size={18} />
+              <div className="site-modal-title" style={{ color: '#38bdf8' }}>
+                <DropletIcon size={20} />
+                <span>Points Tactiques DFCI & Eau</span>
+              </div>
+              <button type="button" className="panel-close-btn" onClick={() => setIsAddTacticalModalOpen(false)}>
+                <XIcon size={16} />
               </button>
             </div>
 
-            <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.5 }}>
-              Positionné sur le site <strong>{selectedSite.name}</strong>. Ces repères orientent les secours SDIS et les engins CCF en cas d'intervention pour localiser l'eau et les accès.
+            <p style={{ fontSize: '12.5px', color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
+              Site <strong>{selectedSite.name}</strong> · Coordonnées {selectedSite.lat.toFixed(4)}°N, {selectedSite.lng.toFixed(4)}°E.
+              Ces repères orientent les secours SDIS 18/112 et les engins CCF pour localiser l'eau et les accès.
             </p>
 
-            <form onSubmit={handleAddTacticalPoint} className="site-form">
-              <div className="site-form-group">
-                <label>Nom ou référence du point *</label>
-                <input
-                  type="text"
-                  required
-                  value={newPtName}
-                  onChange={(e) => setNewPtName(e.target.value)}
-                  placeholder="Ex: Cuve Béton DFCI 30m³ ou Poteau Rouge #4"
-                />
-              </div>
+            {/* Onglets Navigation */}
+            <div className="tactical-modal-tabs">
+              <button
+                type="button"
+                className={`tactical-tab-btn ${tacticalModalTab === 'scan' ? 'active' : ''}`}
+                onClick={() => setTacticalModalTab('scan')}
+              >
+                <SparklesIcon size={14} />
+                <span>Détection Auto OpenData / SDIS</span>
+                <span className="tactical-tab-badge">API Officielle</span>
+              </button>
+              <button
+                type="button"
+                className={`tactical-tab-btn ${tacticalModalTab === 'manual' ? 'active' : ''}`}
+                onClick={() => setTacticalModalTab('manual')}
+              >
+                <PlusIcon size={14} />
+                <span>Ajout Manuel</span>
+              </button>
+            </div>
 
-              <div className="site-form-group">
-                <label>Type d'infrastructure DFCI *</label>
-                <select
-                  value={newPtType}
-                  onChange={(e) => setNewPtType(e.target.value as any)}
-                >
-                  <option value="water_tank">Cuve d'eau DFCI</option>
-                  <option value="hydrant">Poteau incendie (Hydrant)</option>
-                  <option value="pool">Bassin naturel / Piscine</option>
-                  <option value="access_path">Chemin carrossable CCF / Accès secours</option>
-                  <option value="gate">Barrière DFCI / Portail à clé</option>
-                </select>
-              </div>
-
-              {(newPtType === 'water_tank' || newPtType === 'hydrant' || newPtType === 'pool') && (
-                <div className="site-form-group">
-                  <label>Capacité estimée (Litres)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="500"
-                    value={newPtCapacity}
-                    onChange={(e) => setNewPtCapacity(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="Ex: 10000"
-                  />
+            {/* ONGLET 1 : DÉTECTION AUTOMATIQUE VIA API OPENDATA */}
+            {tacticalModalTab === 'scan' && (
+              <div className="tactical-scan-container">
+                <div className="tactical-api-banner">
+                  <div className="tactical-api-badge">
+                    <DatabaseIcon size={14} />
+                    <span>API Nationale PEI & OpenStreetMap</span>
+                  </div>
+                  <p className="tactical-api-desc">
+                    Interroge en temps réel les bases ouvertes officielles pour cartographier automatiquement les <strong>poteaux incendie normalisés</strong>, bouches sous chaussée et <strong>citernes DFCI</strong> autour de votre parcelle.
+                  </p>
                 </div>
-              )}
 
-              <div className="site-form-group">
-                <label>Instructions d'accès & détails tactiques</label>
-                <textarea
-                  rows={3}
-                  value={newPtNotes}
-                  onChange={(e) => setNewPtNotes(e.target.value)}
-                  placeholder="Ex: Raccord symétrique Guillemin DN65, code cadenas 3812, accès camion 4x4 uniquement."
-                />
-              </div>
+                {/* Sélecteur de rayon */}
+                <div className="site-input-group">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label className="site-input-label">Rayon de détection</label>
+                    <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 700 }}>
+                      {scanRadius >= 1000 ? `${(scanRadius / 1000).toFixed(1)} km` : `${scanRadius} m`}
+                    </span>
+                  </div>
+                  <div className="tactical-radius-pills">
+                    {[1000, 2500, 5000].map(r => (
+                      <button
+                        key={r}
+                        type="button"
+                        className={`tactical-radius-btn ${scanRadius === r ? 'active' : ''}`}
+                        onClick={() => {
+                          setScanRadius(r);
+                          handleScanOsmHydrants(r);
+                        }}
+                      >
+                        {r >= 1000 ? `${r / 1000} km` : `${r} m`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <div className="site-modal-actions">
-                <button
-                  type="submit"
-                  disabled={isSubmittingTactical || !newPtName.trim()}
-                  className="site-btn-submit"
-                >
-                  {isSubmittingTactical ? "Enregistrement..." : "Enregistrer le point"}
-                </button>
+                {/* Bouton de scan */}
                 <button
                   type="button"
-                  className="site-btn-cancel"
-                  onClick={() => setIsAddTacticalModalOpen(false)}
+                  className="tactical-btn-scan"
+                  disabled={isScanningOsm}
+                  onClick={() => handleScanOsmHydrants(scanRadius)}
                 >
-                  Annuler
+                  <SearchIcon size={15} />
+                  <span>{isScanningOsm ? 'Interrogation de l\'API OpenData...' : `Actualiser la détection (${scanRadius / 1000} km)`}</span>
                 </button>
+
+                {importFeedback && (
+                  <div className={`tactical-feedback-alert ${importFeedback.includes('Succès') ? 'success' : 'info'}`}>
+                    <CheckCircleIcon size={15} />
+                    <span>{importFeedback}</span>
+                  </div>
+                )}
+
+                {/* Résultats de la détection */}
+                {scanPerformed && (
+                  <div className="tactical-scan-results-box">
+                    <div className="tactical-results-header">
+                      <span className="tactical-results-count">
+                        {scannedItems.length > 0 ? (
+                          <><strong>{scannedItems.length}</strong> bornes & réserves détectées</>
+                        ) : (
+                          "Aucune borne répertoriée dans ce rayon"
+                        )}
+                      </span>
+                      {scannedItems.length > 0 && (
+                        <button
+                          type="button"
+                          className="tactical-btn-import-all"
+                          disabled={isImportingOsm || scannedItems.every(i => i.already_imported)}
+                          onClick={() => handleImportOsmHydrants()}
+                        >
+                          {isImportingOsm ? 'Importation...' : 'Tout importer sur le plan'}
+                        </button>
+                      )}
+                    </div>
+
+                    {scannedItems.length > 0 ? (
+                      <div className="tactical-results-list">
+                        {scannedItems.map(item => (
+                          <div key={item.osm_id} className={`tactical-result-item ${item.already_imported ? 'imported' : ''}`}>
+                            <div className="tactical-result-icon">
+                              {item.point_type === 'hydrant' ? (
+                                <span className="tactical-icon-hydrant" title="Poteau incendie"><FlameIcon size={14} /></span>
+                              ) : (
+                                <span className="tactical-icon-tank" title="Citerne / Réserve DFCI"><DropletIcon size={14} /></span>
+                              )}
+                            </div>
+                            <div className="tactical-result-info">
+                              <div className="tactical-result-title-row">
+                                <span className="tactical-result-name">{item.name}</span>
+                                <span className="tactical-dist-tag">à {item.distance_meters >= 1000 ? `${(item.distance_meters / 1000).toFixed(1)} km` : `${item.distance_meters} m`}</span>
+                              </div>
+                              {item.notes && <div className="tactical-result-specs">{item.notes}</div>}
+                            </div>
+                            <div className="tactical-result-action">
+                              {item.already_imported ? (
+                                <span className="badge-already-imported">
+                                  <CheckCircleIcon size={12} />
+                                  <span>Présent</span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="tactical-btn-import-single"
+                                  disabled={isImportingOsm}
+                                  onClick={() => handleImportOsmHydrants([item.osm_id])}
+                                >
+                                  Importer
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="tactical-empty-results">
+                        <p>Aucun point d'eau officiel répertorié à moins de {scanRadius / 1000} km.</p>
+                        <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                          Augmentez le rayon à 5 km ou basculez sur l'onglet <strong>Ajout Manuel</strong> pour positionner votre cuve ou bassin privé.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="site-modal-actions" style={{ marginTop: '8px' }}>
+                  <button type="button" className="site-btn-cancel" onClick={() => setIsAddTacticalModalOpen(false)}>
+                    Fermer
+                  </button>
+                </div>
               </div>
-            </form>
+            )}
+
+            {/* ONGLET 2 : AJOUT MANUEL SUR-MESURE */}
+            {tacticalModalTab === 'manual' && (
+              <form onSubmit={handleAddTacticalPoint} className="tactical-manual-form">
+                {/* Type d'infrastructure avec chips interactifs */}
+                <div className="site-input-group">
+                  <label className="site-input-label">Type d'infrastructure DFCI *</label>
+                  <div className="tactical-type-grid">
+                    {[
+                      { type: 'water_tank', label: "Cuve DFCI", icon: DropletIcon, color: '#0284c7' },
+                      { type: 'hydrant', label: 'Poteau Incendie', icon: FlameIcon, color: '#ef4444' },
+                      { type: 'pool', label: 'Bassin / Pompage', icon: DropletIcon, color: '#06b6d4' },
+                      { type: 'access_path', label: 'Accès CCF / Piste', icon: TruckIcon, color: '#10b981' },
+                      { type: 'gate', label: 'Barrière à clé', icon: LockIcon, color: '#f59e0b' },
+                    ].map(opt => {
+                      const IconCmp = opt.icon;
+                      const isSelected = newPtType === opt.type;
+                      return (
+                        <button
+                          key={opt.type}
+                          type="button"
+                          className={`tactical-type-chip ${isSelected ? 'active' : ''}`}
+                          onClick={() => {
+                            setNewPtType(opt.type as any);
+                            if (opt.type === 'water_tank') setNewPtName("Cuve Béton DFCI");
+                            if (opt.type === 'hydrant') setNewPtName("Poteau Incendie");
+                            if (opt.type === 'pool') setNewPtName("Bassin de pompage");
+                            if (opt.type === 'access_path') setNewPtName("Piste CCF carrossable");
+                            if (opt.type === 'gate') setNewPtName("Barrière DFCI à clé");
+                          }}
+                          style={{
+                            borderColor: isSelected ? opt.color : undefined,
+                            color: isSelected ? opt.color : undefined,
+                            backgroundColor: isSelected ? `${opt.color}18` : undefined
+                          }}
+                        >
+                          <IconCmp size={15} />
+                          <span>{opt.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Nom ou référence du point */}
+                <div className="site-input-group">
+                  <label className="site-input-label">Nom ou référence du point *</label>
+                  <input
+                    type="text"
+                    required
+                    className="site-input"
+                    value={newPtName}
+                    onChange={(e) => setNewPtName(e.target.value)}
+                    placeholder="Ex: Cuve Béton DFCI 30m³ ou Poteau Rouge #4"
+                  />
+                </div>
+
+                {/* Capacité avec sélection rapide */}
+                {(newPtType === 'water_tank' || newPtType === 'hydrant' || newPtType === 'pool') && (
+                  <div className="site-input-group">
+                    <label className="site-input-label">Capacité estimée (Litres)</label>
+                    <div className="tactical-capacity-row">
+                      <input
+                        type="number"
+                        min="0"
+                        step="500"
+                        className="site-input"
+                        value={newPtCapacity}
+                        onChange={(e) => setNewPtCapacity(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="Ex: 30000"
+                      />
+                      <div className="tactical-capacity-presets">
+                        {[2500, 5000, 10000, 30000, 60000].map(cap => (
+                          <button
+                            key={cap}
+                            type="button"
+                            className={`tactical-cap-pill ${newPtCapacity === cap ? 'active' : ''}`}
+                            onClick={() => setNewPtCapacity(cap)}
+                          >
+                            {cap >= 1000 ? `${cap / 1000}kL` : `${cap}L`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Consignes d'accès et détails */}
+                <div className="site-input-group">
+                  <label className="site-input-label">Instructions d'accès & détails tactiques</label>
+                  <textarea
+                    rows={3}
+                    className="site-input tactical-textarea"
+                    value={newPtNotes}
+                    onChange={(e) => setNewPtNotes(e.target.value)}
+                    placeholder="Ex: Raccord symétrique Guillemin DN65, code cadenas SDIS 3812, accès camion CCF 4x4..."
+                  />
+                </div>
+
+                <div className="site-modal-actions">
+                  <button
+                    type="button"
+                    className="site-btn-cancel"
+                    onClick={() => setIsAddTacticalModalOpen(false)}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingTactical || !newPtName.trim()}
+                    className="site-btn-submit"
+                  >
+                    {isSubmittingTactical ? "Enregistrement..." : "Enregistrer le point"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

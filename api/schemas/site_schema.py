@@ -70,3 +70,30 @@ class TacticalPointResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Schemas pour l'import automatique OpenData / OpenStreetMap (PEI / DFCI)
+class OsmHydrantItem(BaseModel):
+    osm_id: int
+    name: str
+    point_type: str  # hydrant, water_tank, pool
+    lat: float
+    lng: float
+    distance_meters: int
+    capacity_liters: Optional[int] = None
+    notes: Optional[str] = None
+    already_imported: bool = False
+
+class OsmHydrantScanResponse(BaseModel):
+    total_found: int
+    radius_meters: int
+    items: list[OsmHydrantItem]
+
+class OsmHydrantImportRequest(BaseModel):
+    radius_meters: int = Field(2500, ge=200, le=20000)
+    selected_osm_ids: Optional[list[int]] = None
+
+class OsmHydrantImportResponse(BaseModel):
+    imported_count: int
+    already_existing: int
+    total_found: int
+    points: list[TacticalPointResponse]
