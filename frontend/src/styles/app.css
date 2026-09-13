@@ -20,7 +20,8 @@
 }
 
 .app-shell {
-  max-width: 480px;
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
   min-height: 100vh;
   background: var(--bg);
@@ -29,11 +30,21 @@
   flex-direction: column;
 }
 
+@media (min-width: 768px) {
+  .app-shell {
+    max-width: 1440px;
+  }
+}
+
 .page {
   flex: 1;
   padding: 20px 20px 100px;
   overflow-y: auto;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
 }
+
 
 .page-header {
   display: flex;
@@ -96,7 +107,20 @@
   background: #0d0d11;
   border-top: 1px solid var(--border);
   padding: 8px 4px calc(env(safe-area-inset-bottom, 0px) + 8px);
+  z-index: 100;
 }
+
+@media (min-width: 768px) {
+  .bottom-nav {
+    max-width: 600px;
+    margin: 0 auto;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.6);
+  }
+}
+
 
 .bottom-nav .nav-item {
   flex: 1;

@@ -77,6 +77,7 @@ export const Carte: React.FC = () => {
   const siteUrlParam = searchParams.get('site');
   const [sites, setSites] = useState<Site[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [pairedDevices, setPairedDevices] = useState<Device[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -583,7 +584,7 @@ export const Carte: React.FC = () => {
             onClick={() => setMapLayer((prev) => (prev === 'dark' ? 'satellite' : 'dark'))}
             title="Basculer entre vue Sombre et vue Satellite"
           >
-            <span>{mapLayer === 'dark' ? '🛰️ Vue Satellite' : '🌙 Plan Sombre'}</span>
+            <span>{mapLayer === 'dark' ? 'Vue Satellite' : 'Plan Sombre'}</span>
           </button>
 
           <button
@@ -642,7 +643,7 @@ export const Carte: React.FC = () => {
           {userPosition && (
             <Marker position={userPosition} icon={createUserLocationIcon()}>
               <Tooltip permanent direction="top" offset={[0, -14]} className="site-leaflet-tooltip user-position-tooltip">
-                <span>📍 Ma position GPS</span>
+                <span>Ma position GPS</span>
               </Tooltip>
             </Marker>
           )}
@@ -661,7 +662,7 @@ export const Carte: React.FC = () => {
               }}
             >
               <Tooltip permanent direction="top" offset={[0, -10]} className="site-leaflet-tooltip">
-                <span>🎯 Cible: Rayon {newSiteRadius}m (⌀ {newSiteRadius * 2}m)</span>
+                <span>Périmètre : Rayon {newSiteRadius}m (Diamètre {newSiteRadius * 2}m)</span>
               </Tooltip>
             </Circle>
           )}
@@ -709,10 +710,10 @@ export const Carte: React.FC = () => {
 
         {/* Panneau Détails du Site Sélectionné */}
         {selectedSite && (
-          <div className="camera-details-panel" style={{ zIndex: 1000, position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)', width: '92%', maxWidth: '520px' }}>
+          <div className={`camera-details-panel ${isPanelCollapsed ? 'collapsed' : ''}`}>
             <div className="panel-header">
               <div>
-                <h3 style={{ margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {selectedSite.name}
                   {selectedSite.device ? (
                     <span style={{ fontSize: '11px', background: 'rgba(0, 204, 102, 0.15)', color: '#00cc66', border: '1px solid rgba(0, 204, 102, 0.3)', padding: '2px 8px', borderRadius: '12px' }}>
@@ -724,15 +725,31 @@ export const Carte: React.FC = () => {
                     </span>
                   )}
                 </h3>
-                {selectedSite.description && (
+                {!isPanelCollapsed && selectedSite.description && (
                   <p style={{ margin: '4px 0 0', fontSize: '11.5px', color: '#94a3b8' }}>{selectedSite.description}</p>
                 )}
               </div>
-              <button className="panel-close-btn" onClick={() => setSelectedSiteId(null)}>
-                <XIcon size={16} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  type="button"
+                  className="panel-toggle-btn"
+                  onClick={() => setIsPanelCollapsed((prev) => !prev)}
+                  title={isPanelCollapsed ? "Développer les commandes" : "Réduire le panneau"}
+                  aria-label={isPanelCollapsed ? "Développer" : "Réduire"}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    {isPanelCollapsed ? <polyline points="6 9 12 15 18 9" /> : <polyline points="18 15 12 9 6 15" />}
+                  </svg>
+                </button>
+                <button className="panel-close-btn" onClick={() => setSelectedSiteId(null)} title="Fermer le panneau">
+                  <XIcon size={16} />
+                </button>
+              </div>
             </div>
             
+            {!isPanelCollapsed && (
+              <>
+
             {/* Aperçu Vidéo ou Invitation à associer un Raspberry Pi */}
             <div className="panel-preview">
               {selectedSite.device ? (
@@ -857,7 +874,7 @@ export const Carte: React.FC = () => {
                 <span className="stat-label">Périmètre réel</span>
                 <span className="stat-value safe">{selectedSite.radius || 300}m</span>
                 <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'block' }}>
-                  ⌀ {(selectedSite.radius || 300) * 2}m · ~{((Math.PI * Math.pow(selectedSite.radius || 300, 2)) / 10000).toFixed(1)} ha
+                  Diamètre {(selectedSite.radius || 300) * 2}m · ~{((Math.PI * Math.pow(selectedSite.radius || 300, 2)) / 10000).toFixed(1)} ha
                 </span>
               </div>
               <div className="stat-card">
@@ -894,6 +911,8 @@ export const Carte: React.FC = () => {
                 </button>
               </div>
             </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -949,12 +968,12 @@ export const Carte: React.FC = () => {
                 </button>
                 {gpsSuccess && gpsAccuracy !== null && (
                   <div className="gps-status-badge success">
-                    ✓ Position GPS appliquée : {newSiteLat.toFixed(5)}, {newSiteLng.toFixed(5)} (Précision : ±{gpsAccuracy}m)
+                    Position GPS validée : {newSiteLat.toFixed(5)}, {newSiteLng.toFixed(5)} (Précision : ±{gpsAccuracy}m)
                   </div>
                 )}
                 {gpsError && (
                   <div className="gps-status-badge error">
-                    ⚠️ {gpsError}
+                    {gpsError}
                   </div>
                 )}
               </div>

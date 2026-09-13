@@ -88,7 +88,7 @@ def _email_base_template(eyebrow: str, title: str, intro: str, content: str) -> 
             <!-- En-tête -->
             <div style="padding:24px 30px;background:#11131a;border-bottom:1px solid #232332;">
                 <div style="font-size:20px;font-weight:700;color:#ffffff;display:flex;align-items:center;">
-                    <span style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:rgba(255,69,0,0.15);border:1px solid #ff4500;margin-right:10px;font-size:16px;">🔥</span>
+                    <span style="display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:6px;background:linear-gradient(135deg,#ff4500,#ff8c00);margin-right:10px;font-size:12px;font-weight:900;color:#ffffff;letter-spacing:0.5px;">CF</span>
                     CamFire
                 </div>
                 <div style="margin-top:10px;color:#ff5722;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">
@@ -179,11 +179,11 @@ L'équipe Sécurité CamFire
             {code}
         </span>
         <div style="margin-top:10px;color:#64748b;font-size:12px;">
-            ⏱️ Ce code expire dans <strong>{expire_minutes} minutes</strong>
+            Ce code expire dans <strong>{expire_minutes} minutes</strong>
         </div>
     </div>
     <div style="padding:14px 16px;background:rgba(255,87,34,0.08);border-left:3px solid #ff5722;border-radius:6px;color:#cbd5e1;font-size:13px;line-height:1.5;">
-        🔒 <strong>Important :</strong> Ne partagez jamais ce code avec qui que ce soit. Nos équipes ne vous le demanderont jamais.
+        <strong>Important :</strong> Ne partagez jamais ce code avec qui que ce soit. Nos équipes ne vous le demanderont jamais.
     </div>
     """
 
@@ -242,7 +242,7 @@ L'équipe Sécurité CamFire
         </table>
     </div>
     <div style="padding:14px 16px;background:rgba(239,68,68,0.08);border-left:3px solid #ef4444;border-radius:6px;color:#cbd5e1;font-size:13px;line-height:1.5;">
-        ⚠️ <strong>Ce n'est pas vous ?</strong> Si vous ne reconnaissez pas cette connexion, modifiez immédiatement votre mot de passe et contactez votre administrateur.
+        <strong>Ce n'est pas vous ?</strong> Si vous ne reconnaissez pas cette connexion, modifiez immédiatement votre mot de passe et contactez votre administrateur.
     </div>
     """
 
@@ -378,7 +378,7 @@ L'équipe Sécurité CamFire
         _detail_card(rows)
         + """
         <div style="margin-top:20px;padding:14px 16px;background:rgba(255,165,0,0.1);border-left:3px solid #ff9800;border-radius:6px;color:#cbd5e1;font-size:13px;line-height:1.5;">
-            🛡️ <strong>Contrôle d'accès :</strong> En tant que propriétaire, vous conservez l'autorité exclusive sur cet équipement. Vous pouvez révoquer ce membre à tout moment dans la section <em>Gestion des membres</em> ou régénérer le code secret PIN.
+            <strong>Contrôle d'accès :</strong> En tant que propriétaire, vous conservez l'autorité exclusive sur cet équipement. Vous pouvez révoquer ce membre à tout moment dans la section <em>Gestion des membres</em> ou régénérer le code secret PIN.
         </div>
         """
     )
@@ -436,11 +436,11 @@ L'équipe Sécurité CamFire
             {code}
         </span>
         <div style="margin-top:10px;color:#64748b;font-size:12px;">
-            ⏱️ Ce code expire dans <strong>{expire_minutes} minutes</strong>
+            Ce code expire dans <strong>{expire_minutes} minutes</strong>
         </div>
     </div>
     <div style="padding:14px 16px;background:rgba(255,87,34,0.08);border-left:3px solid #ff5722;border-radius:6px;color:#cbd5e1;font-size:13px;line-height:1.5;">
-        🔒 <strong>Important :</strong> Si vous n'avez pas demandé cette réinitialisation, ignorez cet e-mail. Votre mot de passe ne sera pas modifié.
+        <strong>Important :</strong> Si vous n'avez pas demandé cette réinitialisation, ignorez cet e-mail. Votre mot de passe ne sera pas modifié.
     </div>
     """
     html_body = _email_base_template(
@@ -466,12 +466,12 @@ def send_fire_emergency_alert_email(
     now_str = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
 
     print("=" * 60)
-    print(f"[🚨 ALERTE INCENDIE EMAIL] Envoi d'urgence à {recipient}")
+    print(f"[ALERTE INCENDIE EMAIL] Envoi d'urgence à {recipient}")
     print(f"  Appareil : {device_name} | Localisation : {location}")
     print(f"  Confiance IA : {confidence:.1f}% | Photo : {image_path}")
     print("=" * 60)
 
-    subject = f"🚨 ALERTE INCENDIE CRITIQUE — CamFire ({device_name})"
+    subject = f"[URGENT] ALERTE INCENDIE CRITIQUE — CamFire ({device_name})"
     text_body = f"""URGENT — DÉPART DE FEU DÉTECTÉ
 
 Le système de vidéosurveillance intelligente CamFire a détecté un départ de feu ou une anomalie thermique critique.
@@ -500,11 +500,11 @@ Veuillez vérifier immédiatement la situation et contacter les services de seco
         _detail_card(rows)
         + """
         <div style="margin-top:20px;padding:16px 18px;background:rgba(239,68,68,0.15);border:2px solid #ef4444;border-radius:10px;color:#fecaca;font-size:14px;line-height:1.6;">
-            ⚠️ <strong>ACTION IMMÉDIATE REQUISE :</strong><br>
+            <strong>ACTION IMMÉDIATE REQUISE :</strong><br>
             Une flamme ou une fumée suspecte a été identifiée. Si la situation le nécessite, composez sans attendre les numéros d'urgence : <strong>18 (Pompiers)</strong> ou <strong>112 (Numéro européen)</strong>.
         </div>
         <p style="margin-top:16px;color:#94a3b8;font-size:13px;">
-            📸 La photo snapshot capturée au moment exact de la détection est attachée à cet e-mail.
+            La photo snapshot capturée au moment exact de la détection est attachée à cet e-mail.
         </p>
         """
     )

@@ -379,5 +379,21 @@ export const WrenchIcon: React.FC<IconProps & { style?: React.CSSProperties }> =
   </svg>
 );
 
+export const KeyIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <path d="M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5L11 9l-1.5-1.5L8 9a5.5 5.5 0 1 0 7.5 7.5L22 10V6l-4-4z" />
+  </svg>
+);
 
+export const CopyIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+  </svg>
+);
 
+export const CheckIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);

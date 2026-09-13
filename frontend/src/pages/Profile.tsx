@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { deviceService, type Device } from '../services/deviceService';
 import { ticketService, type Ticket } from '../services/ticketService';
-import { SettingsIcon, RadioIcon, ShieldCheckIcon, ShieldAlertIcon } from '../components/icons';
+import { SettingsIcon, RadioIcon, ShieldCheckIcon, ShieldAlertIcon, LockIcon, KeyIcon, CopyIcon, CheckIcon } from '../components/icons';
 import './Profile.css';
 
 
@@ -272,7 +272,7 @@ export const Profile: React.FC = () => {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <span className={`device-role-badge ${dev.role === 'owner' ? 'role-owner' : 'role-member'}`}>
-                      {dev.role === 'owner' ? '👑 Propriétaire' : '👥 Membre partagé'}
+                      {dev.role === 'owner' ? 'Propriétaire' : 'Membre partagé'}
                     </span>
                     <span className="device-status-badge">● Connecté (Sécurisé)</span>
                   </div>
@@ -290,8 +290,10 @@ export const Profile: React.FC = () => {
                       className="device-refresh-btn"
                       onClick={() => handleGenerateNewCode(dev.device_id)}
                       disabled={loadingCode && targetDeviceIdForCode === dev.device_id}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
-                      🔑 {loadingCode && targetDeviceIdForCode === dev.device_id ? 'Génération...' : "Inviter / Nouveau code"}
+                      <KeyIcon size={14} />
+                      <span>{loadingCode && targetDeviceIdForCode === dev.device_id ? 'Génération...' : "Inviter / Nouveau code"}</span>
                     </button>
                   )}
                   <button 
@@ -393,7 +395,8 @@ export const Profile: React.FC = () => {
             boxShadow: '0 12px 36px rgba(0, 0, 0, 0.6)'
           }}>
             <h3 style={{ color: '#fff', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              🔑 Code d'Appairage Sécurisé
+              <LockIcon size={18} />
+              <span>Code d'Appairage Sécurisé</span>
             </h3>
             <p style={{ color: 'var(--text-dim)', fontSize: '13px', lineHeight: '1.5', margin: '0 0 16px 0' }}>
               Un nouveau code valide pendant <strong>24 heures</strong> a été généré pour votre appareil <strong>{targetDeviceIdForCode}</strong>.
@@ -410,7 +413,7 @@ export const Profile: React.FC = () => {
                 {generatedCode}
               </span>
               <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px', display: 'block' }}>
-                ⏱️ Expire dans 24 heures
+                Expire dans 24 heures
               </span>
             </div>
 
@@ -423,9 +426,19 @@ export const Profile: React.FC = () => {
                 type="button"
                 className="btn"
                 onClick={handleCopyCode}
-                style={{ flex: 1 }}
+                style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
               >
-                {codeCopied ? '✓ Copié !' : '📋 Copier le code'}
+                {codeCopied ? (
+                  <>
+                    <CheckIcon size={16} />
+                    <span>Copié !</span>
+                  </>
+                ) : (
+                  <>
+                    <CopyIcon size={16} />
+                    <span>Copier le code</span>
+                  </>
+                )}
               </button>
               <button
                 type="button"

@@ -11,13 +11,13 @@ async def send_discord_alert(alert_type: str, location: str, confidence: float, 
     
     if alert_type == "fire":
         color = 0xFF0000
-        title = "🔥 ALERTE INCENDIE DÉTECTÉE"
+        title = "ALERTE INCENDIE DÉTECTÉE"
     elif alert_type == "warn":
         color = 0x0000FF
-        title = "👤 INTRUSION DÉTECTÉE"
+        title = "INTRUSION DÉTECTÉE"
     elif alert_type == "tamper":
         color = 0xFFA500
-        title = "⚠️ COUPURE DE SIGNAL (SABOTAGE)"
+        title = "COUPURE DE SIGNAL (SABOTAGE)"
 
     description = f"**Lieu :** {location}\n**Confiance :** {confidence}%"
 
@@ -69,7 +69,7 @@ async def send_discord_ticket(client_name: str, location: str, device_id: str, c
         return
 
     from datetime import datetime
-    title = "🛠️ NOUVEAU TICKET DE RÉPARATION"
+    title = "NOUVEAU TICKET DE RÉPARATION"
     color = 0xFF8C00 # Dark Orange
 
     # Format de la date (identique au format frontend "11/09/2026 15:39:48")

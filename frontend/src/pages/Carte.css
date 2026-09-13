@@ -89,24 +89,54 @@
 
 
 
-/* ---------- Glassmorphic Panel ---------- */
+/* ---------- Glassmorphic Panel (Desktop Sidebar & Mobile Drawer) ---------- */
 .camera-details-panel {
   position: absolute;
-  bottom: 12px;
-  left: 12px;
-  right: 12px;
-  background: rgba(21, 21, 27, 0.82);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 14px;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: 400px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+  background: rgba(18, 18, 24, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  z-index: 20;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-  animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1000;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.6), 0 12px 30px rgba(0, 0, 0, 0.7);
+  overflow-y: auto;
+  overflow-x: hidden;
+  animation: slide-panel-desktop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.camera-details-panel::-webkit-scrollbar {
+  width: 5px;
+}
+.camera-details-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.camera-details-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+.camera-details-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+@keyframes slide-panel-desktop {
+  from {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes slide-up {
@@ -120,11 +150,55 @@
   }
 }
 
+.camera-details-panel.collapsed {
+  bottom: auto;
+  max-height: 62px;
+  overflow: hidden;
+}
+
+@media (max-width: 767px) {
+  .camera-details-panel {
+    top: auto;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    max-height: 52vh;
+    animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .camera-details-panel.collapsed {
+    max-height: 56px;
+    overflow: hidden;
+  }
+}
+
+.panel-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s;
+}
+
+.panel-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
+
 
 .panel-header h3 {
   font-size: 15px;
