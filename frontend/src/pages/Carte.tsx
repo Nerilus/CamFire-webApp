@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Circle, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, FlashIcon, TrashIcon, GpsIcon } from '../components/icons';
+import { FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, FlashIcon, TrashIcon, GpsIcon, PlusIcon, GlobeIcon } from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
 import { DeviceLiveControls } from '../components/DeviceLiveControls';
 import { fetchZonesWeather } from '../services/weatherService';
@@ -349,107 +349,45 @@ export const Carte: React.FC = () => {
 
   return (
     <div className="carte-page">
-      {/* En-tête de la page */}
-      <div className="carte-header">
-        <div>
-          <h1 className="carte-title">SITES SUR LE PLAN</h1>
-          <p className="carte-subtitle">
-            {loadingData
-              ? 'Chargement des sites...'
-              : `${sites.length} site${sites.length > 1 ? 's' : ''} sur le plan · ${pairedDevices.length} Raspberry Pi`}
-          </p>
+      {/* HUD Header unifié ergonomique */}
+      <div className="carte-hud-header">
+        <div className="hud-brand-area">
+          <div className="hud-badge">
+            <FlameIcon size={15} />
+            <span className="hud-badge-title">SURVEILLANCE</span>
+            <span className="hud-badge-count">{sites.length}</span>
+          </div>
         </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {sites.length > 0 && (
-            <button
-              onClick={() => setIsSitesListModalOpen(true)}
-              style={{
-                background: 'rgba(255, 255, 255, 0.06)',
-                color: '#f8fafc',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '10px',
-                padding: '9px 14px',
-                fontWeight: 600,
-                fontSize: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-              title="Ouvrir la liste complète de tous vos sites"
-            >
-              <ListIcon size={14} />
-              <span>Afficher les sites ({sites.length})</span>
-            </button>
-          )}
 
-          <button
-            onClick={() => {
-              if (userPosition) {
-                setNewSiteLat(userPosition[0]);
-                setNewSiteLng(userPosition[1]);
-                setGpsSuccess(true);
-              } else {
-                setNewSiteLat(46.2276);
-                setNewSiteLng(2.2137);
-                setGpsSuccess(false);
-              }
-              setGpsError(null);
-              setIsAddModalOpen(true);
-            }}
-            style={{
-              background: 'linear-gradient(135deg, #ff3300 0%, #ff5500 100%)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '10px',
-              padding: '9px 16px',
-              fontWeight: 700,
-              fontSize: '12.5px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(255, 51, 0, 0.4)'
-            }}
-          >
-            <span>+ Ajouter un site</span>
-          </button>
-
-          <button
-            className={`carte-refresh-btn ${isRefreshing ? 'spinning' : ''}`}
-            onClick={handleRefresh}
-            aria-label="Rafraîchir les sites"
-          >
-            <RefreshIcon size={18} />
-          </button>
-        </div>
-      </div>
-
-      {/* Barre de défilement horizontal des Sites (Chips cliquables) */}
-      {sites.length > 0 && (
-        <div className="sites-horizontal-bar">
+        {/* Défilement horizontal des sites (Pillules ergonomiques) */}
+        <div className="hud-sites-scroll">
           {sites.map((site) => {
             const isSelected = site.id === selectedSiteId;
             const hasDev = Boolean(site.device_id && site.device);
             return (
               <button
                 key={site.id}
-                className={`site-chip ${isSelected ? 'active' : ''}`}
-                onClick={() => setSelectedSiteId(site.id)}
+                type="button"
+                className={`hud-site-pill ${isSelected ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedSiteId(site.id);
+                  setIsPanelCollapsed(false);
+                }}
                 title={`Afficher ${site.name} sur le plan`}
               >
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  {hasDev ? <RadioIcon size={13} /> : <PinIcon size={13} />}
-                </span>
-                <strong>{site.name}</strong>
-                {hasDev && <span className="chip-live-dot" title="Équipé d'un Raspberry Pi" />}
+                {hasDev ? <RadioIcon size={12} /> : <PinIcon size={12} />}
+                <span>{site.name}</span>
+                {hasDev && <span className="chip-live-dot" />}
               </button>
             );
           })}
+        </div>
+
+        {/* Groupe d'actions rapides du HUD */}
+        <div className="hud-actions-group">
           <button
-            className="site-chip add-chip"
+            type="button"
+            className="hud-btn-primary"
             onClick={() => {
               if (userPosition) {
                 setNewSiteLat(userPosition[0]);
@@ -463,11 +401,55 @@ export const Carte: React.FC = () => {
               setGpsError(null);
               setIsAddModalOpen(true);
             }}
+            title="Ajouter un nouveau site de surveillance"
           >
-            + Nouveau site
+            <PlusIcon size={15} />
+            <span className="hide-on-mobile">Ajouter</span>
+          </button>
+
+          {sites.length > 0 && (
+            <button
+              type="button"
+              className="hud-btn-icon hide-on-mobile"
+              onClick={() => setIsSitesListModalOpen(true)}
+              title={`Liste complète (${sites.length} sites)`}
+            >
+              <ListIcon size={15} />
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="hud-btn-icon"
+            onClick={() => setMapLayer((prev) => (prev === 'dark' ? 'satellite' : 'dark'))}
+            title={mapLayer === 'dark' ? "Passer en vue Satellite" : "Passer en plan Sombre"}
+          >
+            <GlobeIcon size={15} />
+            <span className="hide-on-mobile" style={{ fontSize: '11px', fontWeight: 700 }}>
+              {mapLayer === 'dark' ? 'Satellite' : 'Plan'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className={`hud-btn-icon ${isLocating ? 'locating' : ''}`}
+            onClick={() => handleLocateUser(false)}
+            title="Centrer la carte sur ma position GPS"
+          >
+            <GpsIcon size={15} className={isLocating ? 'spinning' : ''} />
+          </button>
+
+          <button
+            type="button"
+            className={`hud-btn-icon ${isRefreshing ? 'spinning' : ''}`}
+            onClick={handleRefresh}
+            title="Rafraîchir les données"
+          >
+            <RefreshIcon size={15} />
           </button>
         </div>
-      )}
+      </div>
+
 
       {/* Conteneur de la Carte Leaflet */}
       <div className="map-container" style={{ position: 'relative' }}>
@@ -576,27 +558,6 @@ export const Carte: React.FC = () => {
           </div>
         )}
 
-        {/* Contrôles Flottants sur la Carte (Type de carte + GPS) */}
-        <div className="map-floating-controls">
-          <button
-            type="button"
-            className="map-floating-btn"
-            onClick={() => setMapLayer((prev) => (prev === 'dark' ? 'satellite' : 'dark'))}
-            title="Basculer entre vue Sombre et vue Satellite"
-          >
-            <span>{mapLayer === 'dark' ? 'Vue Satellite' : 'Plan Sombre'}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`map-floating-btn ${isLocating ? 'locating' : ''}`}
-            onClick={() => handleLocateUser(false)}
-            title="Centrer la carte sur ma position GPS (Téléphone / PC)"
-          >
-            <GpsIcon size={16} className={isLocating ? 'spinning' : ''} />
-            <span>{isLocating ? 'Recherche...' : 'Ma position'}</span>
-          </button>
-        </div>
 
         <MapContainer 
           center={selectedSite ? [selectedSite.lat, selectedSite.lng] : userPosition || [46.2276, 2.2137]} 
@@ -746,6 +707,17 @@ export const Carte: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {isPanelCollapsed && (
+              <div 
+                className="panel-collapsed-peek" 
+                onClick={() => setIsPanelCollapsed(false)}
+                title="Cliquer pour afficher les commandes"
+              >
+                <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>Commandes réduites</span>
+                <span style={{ fontSize: '11px', color: '#ff5722', fontWeight: 700 }}>· Développer</span>
+              </div>
+            )}
             
             {!isPanelCollapsed && (
               <>
@@ -862,57 +834,62 @@ export const Carte: React.FC = () => {
               </div>
             )}
 
-            {/* Statistiques et Météo du site */}
-            <div className="panel-stats">
-              <div className="stat-card">
-                <span className="stat-label">Équipement</span>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: selectedSite.device ? '#00cc66' : '#94a3b8' }}>
+            {/* Statistiques et Météo du site - Bar télémétrie épurée */}
+            <div className="panel-telemetry-row">
+              <div className="telemetry-pill">
+                <span className="telemetry-label">Périmètre</span>
+                <strong className="telemetry-value">{selectedSite.radius || 300}m</strong>
+                <span className="telemetry-sub">~{((Math.PI * Math.pow(selectedSite.radius || 300, 2)) / 10000).toFixed(1)} ha</span>
+              </div>
+              <div className="telemetry-pill">
+                <span className="telemetry-label">Risque local</span>
+                <strong className="telemetry-value" style={{ color: (weatherRisk?.risk || 0) > 60 ? '#ef4444' : (weatherRisk?.risk || 0) > 30 ? '#f59e0b' : '#22c55e' }}>
+                  {weatherRisk ? `${weatherRisk.risk}%` : '0%'}
+                </strong>
+                <span className="telemetry-sub">{(weatherRisk?.risk || 0) > 60 ? 'Critique' : (weatherRisk?.risk || 0) > 30 ? 'Modéré' : 'Faible'}</span>
+              </div>
+              <div className="telemetry-pill">
+                <span className="telemetry-label">Dispositif</span>
+                <strong className="telemetry-value" style={{ fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {selectedSite.device ? selectedSite.device.name : 'Aucun'}
-                </span>
-              </div>
-              <div className="stat-card">
-                <span className="stat-label">Périmètre réel</span>
-                <span className="stat-value safe">{selectedSite.radius || 300}m</span>
-                <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', display: 'block' }}>
-                  Diamètre {(selectedSite.radius || 300) * 2}m · ~{((Math.PI * Math.pow(selectedSite.radius || 300, 2)) / 10000).toFixed(1)} ha
-                </span>
-              </div>
-              <div className="stat-card">
-                <span className="stat-label">Risque local</span>
-                <span className="stat-value safe">{weatherRisk ? `${weatherRisk.risk}%` : '0%'}</span>
+                </strong>
+                <span className="telemetry-sub">{selectedSite.device ? 'Pi 4 Connecté' : 'Non équipé'}</span>
               </div>
             </div>
 
             {/* Barre d'action inférieure du site */}
             <div className="panel-footer">
-              <span className="gps-label">
-                {selectedSite.lat.toFixed(4)}°N, {selectedSite.lng.toFixed(4)}°E
+              <span className="panel-gps-tag">
+                <PinIcon size={12} />
+                <span>{selectedSite.lat.toFixed(4)}°N, {selectedSite.lng.toFixed(4)}°E</span>
               </span>
               
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="panel-footer-actions">
                 <button 
-                  className="btn btn-dark"
+                  type="button"
+                  className="btn-action-secondary"
                   onClick={() => {
                     setSelectedDeviceIdToAssign(selectedSite.device_id || (pairedDevices.length > 0 ? pairedDevices[0].id : ''));
                     setIsAssignModalOpen(true);
                   }}
                   title="Changer le Raspberry Pi associé"
                 >
-                  {selectedSite.device ? "Changer d'appareil" : "Associer"}
+                  {selectedSite.device ? "Modifier" : "Associer"}
                 </button>
 
                 <button 
-                  className="btn"
-                  style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                  type="button"
+                  className="btn-action-danger"
                   onClick={() => handleDeleteSite(selectedSite.id)}
                   title="Supprimer ce site du plan"
                 >
-                  Supprimer
+                  <TrashIcon size={13} />
                 </button>
               </div>
             </div>
               </>
             )}
+
           </div>
         )}
       </div>

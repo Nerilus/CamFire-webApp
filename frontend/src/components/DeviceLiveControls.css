@@ -358,3 +358,281 @@
   border-color: #f59e0b;
   color: #fbbf24;
 }
+
+/* ==========================================================================
+   NOUVEAU COMMAND PAD ERGONOMIQUE (Grille 2x2 compacte)
+   ========================================================================== */
+.action-pad-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.pad-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  background: rgba(24, 26, 36, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+  user-select: none;
+  min-height: 48px;
+  width: 100%;
+}
+
+.pad-btn:hover:not(:disabled) {
+  background: rgba(32, 35, 48, 0.95);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.pad-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.pad-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pad-btn-icon-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1f5f9;
+  transition: all 0.2s ease;
+}
+
+.pad-btn-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.pad-btn-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.2px;
+}
+
+.pad-btn-hint {
+  font-size: 9.5px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+/* Bouton PTT */
+.pad-btn.ptt-btn {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+.pad-btn.ptt-btn .pad-btn-icon-wrap {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+.pad-btn.ptt-btn.recording {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border-color: #f87171;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.6);
+}
+.pad-btn.ptt-btn.recording .pad-btn-icon-wrap {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.pad-btn.ptt-btn.recording .pad-btn-title,
+.pad-btn.ptt-btn.recording .pad-btn-hint {
+  color: #fff;
+}
+
+/* Bouton Écoute */
+.pad-btn.listen-btn.active {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+.pad-btn.listen-btn.active .pad-btn-icon-wrap {
+  background: rgba(34, 197, 94, 0.25);
+  color: #4ade80;
+}
+.pad-btn.listen-btn.active .pad-btn-title {
+  color: #4ade80;
+}
+
+/* Bouton Alarme */
+.pad-btn.alarm-btn {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.pad-btn.alarm-btn .pad-btn-icon-wrap {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+.pad-btn.alarm-btn.active {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  border-color: #ef4444;
+  box-shadow: 0 0 16px rgba(220, 38, 38, 0.6);
+  animation: pulseAlarmBtn 0.8s infinite alternate;
+}
+@keyframes pulseAlarmBtn {
+  from { box-shadow: 0 0 10px rgba(220, 38, 38, 0.5); }
+  to { box-shadow: 0 0 20px rgba(220, 38, 38, 0.9); }
+}
+.pad-btn.alarm-btn.active .pad-btn-icon-wrap {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.pad-btn.alarm-btn.active .pad-btn-title,
+.pad-btn.alarm-btn.active .pad-btn-hint {
+  color: #fff;
+}
+
+/* Bouton Travaux */
+.pad-btn.maintenance-btn.active {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.45);
+}
+.pad-btn.maintenance-btn.active .pad-btn-icon-wrap {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+}
+.pad-btn.maintenance-btn.active .pad-btn-title {
+  color: #fbbf24;
+}
+
+/* Feedback Push-to-Talk (Pillule animée) */
+.talk-feedback-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(30, 35, 48, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  animation: feedbackSlideIn 0.2s ease-out;
+}
+
+@keyframes feedbackSlideIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.talk-feedback-pill.success {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+}
+
+.talk-feedback-pill.error {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+/* Sélecteur de durée Mode Travaux inline */
+.maintenance-inline-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(20, 22, 32, 0.95);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  padding: 7px 10px;
+  animation: slideDownPicker 0.2s ease-out;
+}
+
+@keyframes slideDownPicker {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.maintenance-inline-picker .picker-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fbbf24;
+  white-space: nowrap;
+}
+
+.maintenance-inline-picker .picker-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.maintenance-inline-picker .picker-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.maintenance-inline-picker .picker-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.maintenance-inline-picker .picker-chip.selected {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #000;
+  font-weight: 800;
+}
+
+.maintenance-inline-picker .picker-apply-btn {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 10.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: filter 0.15s;
+  white-space: nowrap;
+}
+
+.maintenance-inline-picker .picker-apply-btn:hover {
+  filter: brightness(1.1);
+}
+
+.maintenance-resume-btn {
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  color: #fbbf24;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: auto;
+  transition: all 0.15s;
+}
+
+.maintenance-resume-btn:hover {
+  background: rgba(245, 158, 11, 0.35);
+  color: #fff;
+}
+

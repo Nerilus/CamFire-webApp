@@ -45,6 +45,7 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
   const [isMaintenance, setIsMaintenance] = useState(device.is_maintenance_mode || false);
   const [maintenanceHours, setMaintenanceHours] = useState<number>(2);
   const [isMaintenanceLoading, setIsMaintenanceLoading] = useState(false);
+  const [showDurationPicker, setShowDurationPicker] = useState(false);
 
   useEffect(() => {
     setIsAlarmActive(device.alarm_active || false);
@@ -187,140 +188,161 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
           <WrenchIcon size={16} className="wrench-pulse" />
           <div className="maintenance-banner-text">
             <strong>Mode Travaux actif</strong>
-            <span>Détection incendie et alertes suspendues pour éviter les faux positifs.</span>
+            <span>Détection incendie suspendue {device.maintenance_until ? `jusqu'à ${new Date(device.maintenance_until).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>
           </div>
+          <button
+            type="button"
+            className="maintenance-resume-btn"
+            onClick={handleToggleMaintenance}
+            disabled={isMaintenanceLoading}
+            title="Réactiver immédiatement la surveillance IA"
+          >
+            Reprendre
+          </button>
         </div>
       )}
 
-      <div className="controls-grid">
+      {/* Command Pad 2x2 Ergonomique */}
+      <div className="action-pad-grid">
         {/* BOUTON 1 : Push-to-Talk (Parler) */}
-        <div className="control-card talk-card">
-          <div className="control-header">
-            <span className="control-tag">Interphone vocal</span>
-            {isRecording && <span className="recording-dot">● En direct</span>}
+        <button
+          type="button"
+          className={`pad-btn ptt-btn ${isRecording ? 'recording' : ''} ${isSendingAudio ? 'sending' : ''}`}
+          onMouseDown={startRecording}
+          onMouseUp={stopRecording}
+          onTouchStart={(e) => { e.preventDefault(); startRecording(); }}
+          onTouchEnd={(e) => { e.preventDefault(); stopRecording(); }}
+          disabled={isSendingAudio}
+          title="Maintenez appuyé pour parler via le haut-parleur"
+        >
+          <div className="pad-btn-icon-wrap">
+            <MicIcon size={17} />
+            {isRecording && <div className="ptt-pulse-ring" />}
           </div>
-          
-          <button
-            type="button"
-            className={`control-btn ptt-btn ${isRecording ? 'recording' : ''} ${isSendingAudio ? 'sending' : ''}`}
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onTouchStart={(e) => { e.preventDefault(); startRecording(); }}
-            onTouchEnd={(e) => { e.preventDefault(); stopRecording(); }}
-            disabled={isSendingAudio}
-            title="Maintenez appuyé pour parler"
-          >
-            <div className="ptt-icon-wrapper">
-              <MicIcon size={22} />
-              {isRecording && <div className="ptt-pulse-ring" />}
-            </div>
-            <div className="ptt-labels">
-              <strong>{isRecording ? "Relâchez pour envoyer" : isSendingAudio ? "Envoi en cours..." : "Maintenir pour parler"}</strong>
-              <span>Diffuse votre voix sur le Pi</span>
-            </div>
-          </button>
-
-          {talkFeedback && (
-            <div className={`talk-feedback ${talkFeedback.includes('Diffusé') ? 'success' : talkFeedback.includes('Erreur') ? 'error' : ''}`}>
-              {talkFeedback}
-            </div>
-          )}
-        </div>
-
-        {/* BOUTON 2 : Écouter le microphone du Pi */}
-        <div className="control-card">
-          <div className="control-header">
-            <span className="control-tag">Ambiance sonore</span>
-            {isListening && <span className="listening-badge">En écoute</span>}
-          </div>
-
-          <button
-            type="button"
-            className={`control-btn listen-btn ${isListening ? 'active' : ''}`}
-            onClick={toggleListening}
-          >
-            {isListening ? <VolumeXIcon size={20} /> : <VolumeIcon size={20} />}
-            <div className="btn-text-block">
-              <strong>{isListening ? "Couper l'écoute" : "Écouter en direct"}</strong>
-              <span>{isListening ? "Flux audio connecté" : "Micro USB du Raspberry Pi"}</span>
-            </div>
-          </button>
-        </div>
-
-        {/* BOUTON 3 : Sirène d'Alarme d'Urgence */}
-        <div className="control-card alarm-card">
-          <div className="control-header">
-            <span className="control-tag">Sécurité & Dissuasion</span>
-            {isAlarmActive && <span className="alarm-flashing-tag">SIRÈNE ACTIVE</span>}
-          </div>
-
-          <button
-            type="button"
-            className={`control-btn alarm-btn ${isAlarmActive ? 'danger-active' : ''}`}
-            onClick={handleToggleAlarm}
-            disabled={isAlarmLoading}
-          >
-            <SirenIcon size={20} className={isAlarmActive ? 'siren-spin' : ''} />
-            <div className="btn-text-block">
-              <strong>{isAlarmActive ? "Arrêter la sirène" : "Déclencher l'alarme"}</strong>
-              <span>{isAlarmActive ? "Son strident en cours" : "Sirène 15s sur le Pi"}</span>
-            </div>
-          </button>
-        </div>
-
-        {/* BOUTON 4 : Mode Travaux / Pause Surveillance */}
-        <div className="control-card maintenance-card">
-          <div className="control-header">
-            <span className="control-tag">Chantier & Bricolage</span>
-            <span className={`maintenance-status-pill ${isMaintenance ? 'active' : 'inactive'}`}>
-              {isMaintenance ? "Suspendu" : "Surveillance ON"}
+          <div className="pad-btn-content">
+            <span className="pad-btn-title">
+              {isRecording ? "En direct..." : isSendingAudio ? "Envoi..." : "Interphone"}
+            </span>
+            <span className="pad-btn-hint">
+              {isRecording ? "Relâcher" : "Maintenir (PTT)"}
             </span>
           </div>
+        </button>
 
-          <div className="maintenance-body">
-            <div className="maintenance-toggle-row">
-              <button
-                type="button"
-                className={`control-btn maintenance-btn ${isMaintenance ? 'active' : ''}`}
-                onClick={handleToggleMaintenance}
-                disabled={isMaintenanceLoading}
-              >
-                <WrenchIcon size={18} />
-                <div className="btn-text-block">
-                  <strong>{isMaintenance ? "Reprendre surveillance" : "Activer Mode Travaux"}</strong>
-                  <span>{isMaintenance ? "Cliquez pour réactiver l'IA" : "Ignore poussière et fumée"}</span>
-                </div>
-              </button>
-            </div>
-
-            {!isMaintenance && (
-              <div className="maintenance-duration-row">
-                <span className="duration-label">Durée :</span>
-                <div className="duration-options">
-                  {[1, 2, 4, 8].map(h => (
-                    <button
-                      key={h}
-                      type="button"
-                      className={`duration-chip ${maintenanceHours === h ? 'selected' : ''}`}
-                      onClick={() => setMaintenanceHours(h)}
-                    >
-                      {h}h
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className={`duration-chip ${maintenanceHours === 0 ? 'selected' : ''}`}
-                    onClick={() => setMaintenanceHours(0)}
-                    title="Jusqu'à réactivation manuelle"
-                  >
-                    Max
-                  </button>
-                </div>
-              </div>
-            )}
+        {/* BOUTON 2 : Écouter le microphone du Pi */}
+        <button
+          type="button"
+          className={`pad-btn listen-btn ${isListening ? 'active' : ''}`}
+          onClick={toggleListening}
+          title={isListening ? "Couper l'écoute audio" : "Écouter le micro en direct"}
+        >
+          <div className="pad-btn-icon-wrap">
+            {isListening ? <VolumeXIcon size={17} /> : <VolumeIcon size={17} />}
           </div>
-        </div>
+          <div className="pad-btn-content">
+            <span className="pad-btn-title">
+              {isListening ? "Écoute ON" : "Écouter Direct"}
+            </span>
+            <span className="pad-btn-hint">
+              {isListening ? "Flux connecté" : "Ambiance sonore"}
+            </span>
+          </div>
+        </button>
+
+        {/* BOUTON 3 : Sirène d'Alarme d'Urgence */}
+        <button
+          type="button"
+          className={`pad-btn alarm-btn ${isAlarmActive ? 'active' : ''}`}
+          onClick={handleToggleAlarm}
+          disabled={isAlarmLoading}
+          title={isAlarmActive ? "Arrêter la sirène" : "Déclencher l'alarme sonore (15s)"}
+        >
+          <div className="pad-btn-icon-wrap">
+            <SirenIcon size={17} className={isAlarmActive ? 'siren-spin' : ''} />
+          </div>
+          <div className="pad-btn-content">
+            <span className="pad-btn-title">
+              {isAlarmActive ? "Arrêter Sirène" : "Sirène 15s"}
+            </span>
+            <span className="pad-btn-hint">
+              {isAlarmActive ? "Sonnerie en cours" : "Dissuasion"}
+            </span>
+          </div>
+        </button>
+
+        {/* BOUTON 4 : Mode Travaux / Pause Surveillance */}
+        <button
+          type="button"
+          className={`pad-btn maintenance-btn ${isMaintenance ? 'active' : ''}`}
+          onClick={() => {
+            if (isMaintenance) {
+              handleToggleMaintenance();
+            } else {
+              setShowDurationPicker(prev => !prev);
+            }
+          }}
+          disabled={isMaintenanceLoading}
+          title="Suspendre temporairement les alertes lors de travaux"
+        >
+          <div className="pad-btn-icon-wrap">
+            <WrenchIcon size={17} />
+          </div>
+          <div className="pad-btn-content">
+            <span className="pad-btn-title">
+              {isMaintenance ? "Travaux ON" : "Mode Travaux"}
+            </span>
+            <span className="pad-btn-hint">
+              {isMaintenance ? "Surveillance pause" : "Poussière & Fumée"}
+            </span>
+          </div>
+        </button>
       </div>
+
+      {/* Feedback Push-to-Talk */}
+      {talkFeedback && (
+        <div className={`talk-feedback-pill ${talkFeedback.includes('Diffusé') ? 'success' : talkFeedback.includes('Erreur') ? 'error' : ''}`}>
+          <span>{talkFeedback}</span>
+        </div>
+      )}
+
+      {/* Sélecteur de durée Travaux (Inline popover) */}
+      {showDurationPicker && !isMaintenance && (
+        <div className="maintenance-inline-picker">
+          <span className="picker-label">Durée :</span>
+          <div className="picker-chips">
+            {[1, 2, 4, 8].map(h => (
+              <button
+                key={h}
+                type="button"
+                className={`picker-chip ${maintenanceHours === h ? 'selected' : ''}`}
+                onClick={() => setMaintenanceHours(h)}
+              >
+                {h}h
+              </button>
+            ))}
+            <button
+              type="button"
+              className={`picker-chip ${maintenanceHours === 0 ? 'selected' : ''}`}
+              onClick={() => setMaintenanceHours(0)}
+              title="Jusqu'à réactivation manuelle"
+            >
+              Max
+            </button>
+          </div>
+          <button
+            type="button"
+            className="picker-apply-btn"
+            onClick={() => {
+              setShowDurationPicker(false);
+              handleToggleMaintenance();
+            }}
+            disabled={isMaintenanceLoading}
+          >
+            Activer
+          </button>
+        </div>
+      )}
     </div>
   );
+
 };
