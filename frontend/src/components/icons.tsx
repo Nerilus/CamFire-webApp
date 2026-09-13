@@ -397,3 +397,34 @@ export const CheckIcon: React.FC<IconProps & { style?: React.CSSProperties }> = 
     <polyline points="20 6 9 17 4 12" />
   </svg>
 );
+
+export const ActivityIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+  </svg>
+);
+
+export const HardDriveIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <line x1="22" y1="12" x2="2" y2="12" />
+    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    <line x1="6" y1="16" x2="6.01" y2="16" />
+    <line x1="10" y1="16" x2="10.01" y2="16" />
+  </svg>
+);
+
+export const WifiIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+    <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+    <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+    <line x1="12" y1="20" x2="12.01" y2="20" />
+  </svg>
+);
+
+export const BatteryIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <rect x="1" y="6" width="18" height="12" rx="2" />
+    <line x1="23" y1="11" x2="23" y2="13" />
+  </svg>
+);

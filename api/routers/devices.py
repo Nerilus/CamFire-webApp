@@ -30,6 +30,7 @@ from schemas.device_schema import (
     DeviceUpdateRequest,
     DeviceMaintenanceRequest,
     DeviceAlarmRequest,
+    DevicePrivacyMasksRequest,
     StreamTicketResponse,
     RefreshCodeResponse
 )
@@ -255,6 +256,10 @@ def get_my_devices(current_user: User = Depends(get_current_user), db: Session =
             status=status_val,
             tamper_status=dev.tamper_status or "normal",
             cpu_temp=dev.cpu_temp,
+            disk_free_gb=getattr(dev, "disk_free_gb", None),
+            wifi_rssi=getattr(dev, "wifi_rssi", None),
+            battery_voltage=getattr(dev, "battery_voltage", None),
+            privacy_masks=getattr(dev, "privacy_masks", None),
             is_maintenance_mode=getattr(dev, "is_maintenance_mode", False) or False,
             maintenance_until=getattr(dev, "maintenance_until", None),
             alarm_active=getattr(dev, "alarm_active", False) or False
@@ -321,6 +326,12 @@ def device_heartbeat(
     dev.last_seen_at = now_dt
     if req.cpu_temp is not None:
         dev.cpu_temp = req.cpu_temp
+    if req.disk_free_gb is not None:
+        dev.disk_free_gb = req.disk_free_gb
+    if req.wifi_rssi is not None:
+        dev.wifi_rssi = req.wifi_rssi
+    if req.battery_voltage is not None:
+        dev.battery_voltage = req.battery_voltage
     if req.stream_url and req.stream_url.strip():
         new_stream = req.stream_url.strip()
         if new_stream != dev.stream_url:
@@ -985,5 +996,36 @@ def control_device_maintenance(
         "maintenance_until": device.maintenance_until.isoformat() if device.maintenance_until else None,
         "message": "Mode Travaux activé : les alertes incendie sont suspendues." if req.enabled else "Mode Travaux désactivé : surveillance normale rétablie."
     }
+
+
+@router.put("/{device_id}/privacy-masks")
+def update_device_privacy_masks(
+    device_id: str,
+    req: DevicePrivacyMasksRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Enregistre ou supprime les zones de masquage de confidentialité RGPD pour la caméra."""
+    device = db.query(Device).filter(Device.device_id == device_id.strip()).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Appareil introuvable.")
+
+    ud = db.query(UserDevice).filter(
+        UserDevice.user_id == current_user.id,
+        UserDevice.device_id == device.id
+    ).first()
+    if not ud:
+        raise HTTPException(status_code=403, detail="Accès non autorisé.")
+
+    device.privacy_masks = req.privacy_masks.strip() if req.privacy_masks else None
+    db.commit()
+
+    return {
+        "status": "ok",
+        "device_id": device.device_id,
+        "privacy_masks": device.privacy_masks,
+        "message": "Masques de confidentialité RGPD enregistrés avec succès."
+    }
+
 
 

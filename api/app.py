@@ -35,6 +35,10 @@ def _init_db_schema():
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS maintenance_until TIMESTAMP;",
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS alarm_active BOOLEAN DEFAULT FALSE;",
                 "ALTER TABLE devices ADD COLUMN IF NOT EXISTS alarm_triggered_at TIMESTAMP;",
+                "ALTER TABLE devices ADD COLUMN IF NOT EXISTS disk_free_gb FLOAT;",
+                "ALTER TABLE devices ADD COLUMN IF NOT EXISTS wifi_rssi INTEGER;",
+                "ALTER TABLE devices ADD COLUMN IF NOT EXISTS battery_voltage FLOAT;",
+                "ALTER TABLE devices ADD COLUMN IF NOT EXISTS privacy_masks VARCHAR;",
                 "ALTER TABLE sites ADD COLUMN IF NOT EXISTS radius FLOAT DEFAULT 300.0;",
                 "ALTER TABLE sites ADD COLUMN IF NOT EXISTS device_id INTEGER;",
                 # Colonnes 2FA & Récupération mot de passe pour la table users

@@ -13,6 +13,10 @@ export interface Device {
   status: 'online' | 'offline' | 'tampered';
   tamper_status?: 'normal' | 'tampered' | 'signal_lost';
   cpu_temp?: number;
+  disk_free_gb?: number;
+  wifi_rssi?: number;
+  battery_voltage?: number;
+  privacy_masks?: string | null;
   is_maintenance_mode?: boolean;
   maintenance_until?: string | null;
   alarm_active?: boolean;
@@ -218,6 +222,23 @@ export const deviceService = {
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.detail || "Échec de la modification du Mode Travaux.");
+    }
+    return response.json();
+  },
+
+  /**
+   * Enregistre les zones de masquage de confidentialité RGPD pour le flux
+   */
+  async updatePrivacyMasks(deviceId: string, privacyMasks: string): Promise<{ status: string; privacy_masks: string; message: string }> {
+    const response = await fetch(`${API_URL}/devices/${deviceId}/privacy-masks`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ privacy_masks: privacyMasks }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || "Échec de l'enregistrement des masques RGPD.");
     }
     return response.json();
   }

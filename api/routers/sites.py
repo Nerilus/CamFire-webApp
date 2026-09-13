@@ -3,8 +3,11 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Union
 
 from db.database import get_db
-from db.models import User, Device, UserDevice, Site
-from schemas.site_schema import SiteCreate, SiteUpdate, SiteResponse, SiteDeviceSummary, SiteAssignDeviceRequest
+from db.models import User, Device, UserDevice, Site, TacticalPoint
+from schemas.site_schema import (
+    SiteCreate, SiteUpdate, SiteResponse, SiteDeviceSummary, SiteAssignDeviceRequest,
+    TacticalPointCreate, TacticalPointResponse
+)
 from routers.auth import get_current_user
 
 router = APIRouter(
@@ -198,3 +201,66 @@ def delete_site(
     db.delete(site)
     db.commit()
     return {"message": f"Le site '{site.name}' a été supprimé avec succès du plan."}
+
+
+# ---------- Points d'Intérêt DFCI (Réserves d'eau & Accès Pompiers) ----------
+
+@router.get("/{site_id}/tactical-points", response_model=List[TacticalPointResponse])
+def get_site_tactical_points(
+    site_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Retourne l'ensemble des points d'intérêt tactiques DFCI pour un site donné."""
+    site = db.query(Site).filter(Site.id == site_id, Site.user_id == current_user.id).first()
+    if not site:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site introuvable.")
+
+    return db.query(TacticalPoint).filter(TacticalPoint.site_id == site_id).order_by(TacticalPoint.created_at.asc()).all()
+
+
+@router.post("/{site_id}/tactical-points", response_model=TacticalPointResponse, status_code=status.HTTP_201_CREATED)
+def create_site_tactical_point(
+    site_id: int,
+    pt_in: TacticalPointCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Ajoute un point d'eau, bouche incendie, barrière ou accès DFCI sur le site."""
+    site = db.query(Site).filter(Site.id == site_id, Site.user_id == current_user.id).first()
+    if not site:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site introuvable.")
+
+    new_point = TacticalPoint(
+        site_id=site_id,
+        name=pt_in.name.strip(),
+        point_type=pt_in.point_type.strip(),
+        lat=pt_in.lat,
+        lng=pt_in.lng,
+        capacity_liters=pt_in.capacity_liters,
+        notes=pt_in.notes.strip() if pt_in.notes else None
+    )
+    db.add(new_point)
+    db.commit()
+    db.refresh(new_point)
+    return new_point
+
+
+@router.delete("/tactical-points/{point_id}")
+def delete_tactical_point(
+    point_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Supprime un point d'intérêt tactique DFCI."""
+    pt = db.query(TacticalPoint).join(Site).filter(
+        TacticalPoint.id == point_id,
+        Site.user_id == current_user.id
+    ).first()
+    if not pt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Point tactique introuvable.")
+
+    db.delete(pt)
+    db.commit()
+    return {"message": "Point tactique supprimé avec succès."}
+

@@ -54,6 +54,10 @@ class User(Base):
                 "status": status_val,
                 "tamper_status": dev.tamper_status or "normal",
                 "cpu_temp": dev.cpu_temp,
+                "disk_free_gb": getattr(dev, 'disk_free_gb', None),
+                "wifi_rssi": getattr(dev, 'wifi_rssi', None),
+                "battery_voltage": getattr(dev, 'battery_voltage', None),
+                "privacy_masks": getattr(dev, 'privacy_masks', None),
                 "is_maintenance_mode": getattr(dev, 'is_maintenance_mode', False) or False,
                 "maintenance_until": getattr(dev, 'maintenance_until', None),
                 "alarm_active": getattr(dev, 'alarm_active', False) or False
@@ -88,6 +92,10 @@ class Device(Base):
     last_seen_at = Column(DateTime, nullable=True)
     tamper_status = Column(String, default="normal", nullable=True) # 'normal', 'tampered', 'signal_lost'
     cpu_temp = Column(Float, nullable=True)
+    disk_free_gb = Column(Float, nullable=True) # Espace disque restant en Go
+    wifi_rssi = Column(Integer, nullable=True) # Signal Wi-Fi / 4G en dBm
+    battery_voltage = Column(Float, nullable=True) # Tension d'alimentation en Volts (solaire/batterie)
+    privacy_masks = Column(String, nullable=True) # Masquage RGPD (JSON de coordonnées [x1,y1,x2,y2])
     last_tamper_alert_at = Column(DateTime, nullable=True)
     lat = Column(Float, default=46.2276, nullable=True)
     lng = Column(Float, default=2.2137, nullable=True)
@@ -114,6 +122,22 @@ class Site(Base):
 
     user = relationship("User", back_populates="sites")
     device = relationship("Device", back_populates="sites")
+    tactical_points = relationship("TacticalPoint", back_populates="site", cascade="all, delete-orphan")
+
+class TacticalPoint(Base):
+    __tablename__ = "tactical_points"
+
+    id = Column(Integer, primary_key=True, index=True)
+    site_id = Column(Integer, ForeignKey("sites.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False) # ex: "Cuve 5 000L Ouest", "Poteau Incendie #3", "Accès Pompier DFCI"
+    point_type = Column(String, nullable=False) # 'water_tank', 'hydrant', 'pool', 'access_path', 'gate'
+    lat = Column(Float, nullable=False)
+    lng = Column(Float, nullable=False)
+    capacity_liters = Column(Integer, nullable=True) # Capacité en litres si réserve d'eau
+    notes = Column(String, nullable=True) # Instructions d'accès, raccords, clés
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    site = relationship("Site", back_populates="tactical_points")
 
 class EmergencyContact(Base):
     __tablename__ = "emergency_contacts"
