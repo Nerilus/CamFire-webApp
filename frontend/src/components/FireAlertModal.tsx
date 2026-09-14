@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SmokeIcon, WarningIcon, XIcon, CheckCircleIcon, EyeIcon, UsersIcon, PhoneIcon, SendIcon } from './icons';
+import { SmokeIcon, WarningIcon, XIcon, CheckCircleIcon, EyeIcon, UsersIcon, PhoneIcon, SendIcon, MailIcon } from './icons';
 import { API_URL } from '../config/api';
 import './FireAlertModal.css';
 
@@ -26,6 +26,35 @@ interface Props {
 export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, confidence }) => {
   const [showFullImage, setShowFullImage] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailFeedback, setEmailFeedback] = useState<string | null>(null);
+
+  const handleSendReportByEmail = async () => {
+    setIsSendingEmail(true);
+    setEmailFeedback(null);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/alerts/${record.id}/send-email`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Erreur lors de l'envoi de l'e-mail.");
+      }
+      const data = await res.json();
+      setEmailFeedback(data.message || "Rapport officiel PDF envoyé par e-mail avec succès !");
+      setTimeout(() => setEmailFeedback(null), 6000);
+    } catch (err: any) {
+      setEmailFeedback("Erreur: " + (err.message || "Échec d'envoi"));
+      setTimeout(() => setEmailFeedback(null), 7000);
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   const finalImageUrl = imageUrl || record.image_url;
   const rawConf = confidence !== undefined ? confidence : record.confidence;
@@ -120,12 +149,45 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
               <PhoneIcon size={18} /> APPELER LE 17 — POLICE
             </a>
           )}
+          {emailFeedback && (
+            <div style={{
+              margin: '8px 0',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 600,
+              textAlign: 'center',
+              background: emailFeedback.startsWith('Erreur') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+              color: emailFeedback.startsWith('Erreur') ? '#fca5a5' : '#86efac',
+              border: `1px solid ${emailFeedback.startsWith('Erreur') ? '#ef4444' : '#22c55e'}`
+            }}>
+              {emailFeedback}
+            </div>
+          )}
+          <button
+            type="button"
+            className="fire-modal-btn btn-send-email"
+            onClick={handleSendReportByEmail}
+            disabled={isSendingEmail}
+            style={{
+              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <MailIcon size={18} /> {isSendingEmail ? "ENVOI DU RAPPORT PAR E-MAIL..." : "ENVOYER LE RAPPORT PDF PAR E-MAIL"}
+          </button>
           <button
             type="button"
             className="fire-modal-btn btn-report"
             onClick={() => setShowReport(true)}
           >
-            <SendIcon size={18} /> GÉNÉRER LE RAPPORT OFFICIEL (PDF)
+            <SendIcon size={18} /> AFFICHER / TÉLÉCHARGER LE RAPPORT (PDF)
           </button>
         </div>
       </div>
@@ -162,6 +224,23 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
                 </span>
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn-print-report"
+                  onClick={handleSendReportByEmail}
+                  disabled={isSendingEmail}
+                  style={{
+                    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <MailIcon size={14} /> {isSendingEmail ? "Envoi..." : "Envoyer par e-mail"}
+                </button>
                 <a
                   href={`${API_URL}/alerts/${record.id}/pdf`}
                   target="_blank"
@@ -194,6 +273,21 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
                 </button>
               </div>
             </div>
+            {emailFeedback && (
+              <div className="no-print" style={{
+                margin: '8px 16px',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                textAlign: 'center',
+                background: emailFeedback.startsWith('Erreur') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                color: emailFeedback.startsWith('Erreur') ? '#fca5a5' : '#86efac',
+                border: `1px solid ${emailFeedback.startsWith('Erreur') ? '#ef4444' : '#22c55e'}`
+              }}>
+                {emailFeedback}
+              </div>
+            )}
 
             {/* Document Imprimable Officiel A4 */}
             <div className="incident-report-document print-area">
