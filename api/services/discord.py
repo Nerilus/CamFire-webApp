@@ -3,8 +3,8 @@ from core.config import DISCORD_WEBHOOK_URL
 import asyncio
 
 async def send_discord_alert(alert_type: str, location: str, confidence: float, image_url: str = None):
-    if not DISCORD_WEBHOOK_URL:
-        return
+    # Notifications d'alarme sur Discord désactivées à la demande de l'utilisateur
+    return
 
     color = 0x00FF00
     title = "Alerte CamFire"

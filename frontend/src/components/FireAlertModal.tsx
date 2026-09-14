@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SmokeIcon, WarningIcon, XIcon, CheckCircleIcon, EyeIcon, UsersIcon, PhoneIcon, SendIcon } from './icons';
+import { API_URL } from '../config/api';
 import './FireAlertModal.css';
 
 export interface AlertRecord {
@@ -160,13 +161,29 @@ export const FireAlertModal: React.FC<Props> = ({ record, onClose, imageUrl, con
                   REF: CF-INC-{record.id}
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <a
+                  href={`${API_URL}/alerts/${record.id}/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-print-report"
+                  style={{
+                    textDecoration: 'none',
+                    background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  Télécharger PDF
+                </a>
                 <button
                   type="button"
                   className="btn-print-report"
                   onClick={() => window.print()}
                 >
-                  Imprimer / PDF (A4)
+                  Imprimer (A4)
                 </button>
                 <button
                   type="button"

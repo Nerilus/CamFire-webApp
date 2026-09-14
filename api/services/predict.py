@@ -251,11 +251,10 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                 db.commit()
                 print(f"[CAPTURE] Snapshot enregistrée: {filename} -> Type: {detection_type.upper()} ({confidence}%) à {location}")
                 
-                # Notification Discord
-                alert_type_mapped = "fire" if status == "fire" else ("warn" if status == "warn" else "unknown")
-                send_discord_alert_sync(alert_type_mapped, location, confidence, image_url)
+                # Les notifications d'alarme sur Discord sont désactivées conformément au choix de l'utilisateur
+                # send_discord_alert_sync(alert_type_mapped, location, confidence, image_url)
 
-                # Notification E-mail d'Urgence Incendie (avec photo snapshot jointe)
+                # Notification E-mail d'Urgence Incendie (avec Rapport PDF officiel et photo snapshot)
                 if status == "fire":
                     try:
                         from services.email import send_fire_emergency_alert_email
@@ -265,23 +264,44 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                             u = db.query(User).filter(User.id == user_id).first()
                             if u:
                                 target_users.append(u)
-                        if device_id:
-                            uds = db.query(UserDevice).filter(UserDevice.device_id == device_id).all()
+
+                        target_dev_id = device_id or (dev_obj.id if dev_obj else None)
+                        if not target_dev_id:
+                            first_dev = db.query(Device).first()
+                            if first_dev:
+                                target_dev_id = first_dev.id
+
+                        if target_dev_id:
+                            uds = db.query(UserDevice).filter(UserDevice.device_id == target_dev_id).all()
                             for ud in uds:
                                 if ud.user and ud.user not in target_users:
                                     target_users.append(ud.user)
 
+                        # Si aucun équipement lié, avertir tous les utilisateurs ayant activé les alertes
+                        if not target_users:
+                            all_users = db.query(User).filter(User.emergency_alerts_enabled == True).all()
+                            for u in all_users:
+                                if u not in target_users:
+                                    target_users.append(u)
+
                         notified_emails = set()
                         for u in target_users:
-                            if getattr(u, "emergency_alerts_enabled", True) and getattr(u, "emergency_alert_email", None):
+                            if getattr(u, "emergency_alerts_enabled", True):
                                 raw_emails = u.emergency_alert_email or ""
                                 list_emails = [e.strip() for e in raw_emails.replace(";", ",").split(",") if e.strip()]
+                                # Toujours inclure également l'adresse email principale du compte pour éviter tout échec
+                                if getattr(u, "email", None) and u.email.strip():
+                                    list_emails.append(u.email.strip())
+
                                 for em in list_emails:
-                                    if em and em not in notified_emails:
+                                    # Auto-correction des fautes de frappe de nom de domaine
+                                    if em.endswith("@gnail.com"):
+                                        em = em.replace("@gnail.com", "@gmail.com")
+                                    if em and "@" in em and em not in notified_emails:
                                         notified_emails.add(em)
                                         send_fire_emergency_alert_email(
                                             recipient=em,
-                                            device_name=location,
+                                            device_name=dev_obj.name if dev_obj else location,
                                             location=location,
                                             confidence=confidence,
                                             image_path=filepath

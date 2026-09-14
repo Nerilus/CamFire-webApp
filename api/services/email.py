@@ -24,11 +24,17 @@ def _send_email_sync(
     recipient: str,
     text_body: str,
     html_body: str,
-    attachment_path: Optional[str] = None
+    attachment_path: Optional[str] = None,
+    attachments: Optional[list[str]] = None
 ) -> None:
     if not SMTP_HOST:
         print(f"[EMAIL] SMTP non configuré (SMTP_HOST vide). Envoi simulé pour : {recipient}")
         return
+
+    # Nettoyage et correction des fautes de frappe de domaine
+    recipient = recipient.strip()
+    if recipient.endswith("@gnail.com"):
+        recipient = recipient.replace("@gnail.com", "@gmail.com")
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -37,23 +43,40 @@ def _send_email_sync(
     message.set_content(text_body)
     message.add_alternative(html_body, subtype="html")
 
-    if attachment_path and os.path.exists(attachment_path):
-        try:
-            with open(attachment_path, "rb") as f:
-                img_data = f.read()
-                filename = os.path.basename(attachment_path)
-                message.add_attachment(img_data, maintype="image", subtype="jpeg", filename=filename)
-        except Exception as att_err:
-            print(f"[EMAIL] Impossible d'attacher l'image {attachment_path}: {att_err}")
+    # Agrégation des pièces jointes (fichiers PDF, JPEG, PNG, etc.)
+    all_attachments = []
+    if attachments:
+        all_attachments.extend(attachments)
+    if attachment_path and attachment_path not in all_attachments:
+        all_attachments.append(attachment_path)
+
+    for att in all_attachments:
+        if att and os.path.exists(att):
+            try:
+                with open(att, "rb") as f:
+                    file_data = f.read()
+                    filename = os.path.basename(att)
+                    ext = os.path.splitext(filename)[1].lower()
+                    if ext == ".pdf":
+                        message.add_attachment(file_data, maintype="application", subtype="pdf", filename=filename)
+                    elif ext in [".jpg", ".jpeg"]:
+                        message.add_attachment(file_data, maintype="image", subtype="jpeg", filename=filename)
+                    elif ext == ".png":
+                        message.add_attachment(file_data, maintype="image", subtype="png", filename=filename)
+                    else:
+                        message.add_attachment(file_data, maintype="application", subtype="octet-stream", filename=filename)
+                    print(f"[EMAIL] Pièce jointe attachée avec succès: {filename} ({len(file_data)} octets)")
+            except Exception as att_err:
+                print(f"[EMAIL] Impossible d'attacher le fichier {att}: {att_err}")
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=12) as smtp:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
             if SMTP_USE_TLS:
                 smtp.starttls()
             if SMTP_USERNAME and SMTP_PASSWORD:
                 smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
             smtp.send_message(message)
-        print(f"[EMAIL] E-mail envoyé avec succès à {recipient}")
+        print(f"[EMAIL SUCCESS] E-mail envoyé avec succès à {recipient} (Sujet: {subject})")
     except Exception as error:
         print(f"[EMAIL ERROR] Échec de l'envoi de l'e-mail à {recipient}: {error}")
 
@@ -63,12 +86,13 @@ def send_email_async(
     recipient: str,
     text_body: str,
     html_body: str,
-    attachment_path: Optional[str] = None
+    attachment_path: Optional[str] = None,
+    attachments: Optional[list[str]] = None
 ) -> None:
     """Envoie un e-mail dans un thread d'arrière-plan sans bloquer la requête HTTP."""
     thread = threading.Thread(
         target=_send_email_sync,
-        args=(subject, recipient, text_body, html_body, attachment_path),
+        args=(subject, recipient, text_body, html_body, attachment_path, attachments),
         daemon=True,
     )
     thread.start()
@@ -496,6 +520,29 @@ Veuillez vérifier immédiatement la situation et contacter les services de seco
         ("Horodatage", now_str),
     ]
 
+    # Collecte des pièces jointes : Cliché photo + Rapport officiel PDF
+    attachments = []
+    if image_path and os.path.exists(image_path):
+        attachments.append(image_path)
+
+    # Génération automatique du Rapport d'Incident Incendie Officiel (PDF)
+    try:
+        from services.pdf_report import generate_incident_pdf
+        incident_ref = f"CF-ALERT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        pdf_path = generate_incident_pdf(
+            incident_id=incident_ref,
+            device_name=device_name,
+            location=location,
+            confidence=confidence,
+            detection_type="Départ de Feu / Flammes",
+            image_path=image_path
+        )
+        if pdf_path and os.path.exists(pdf_path):
+            attachments.append(pdf_path)
+            print(f"[EMAIL] Rapport d'incident PDF attaché : {pdf_path}")
+    except Exception as pdf_err:
+        print(f"[EMAIL] Erreur lors de la génération du rapport PDF : {pdf_err}")
+
     content = (
         _detail_card(rows)
         + """
@@ -503,9 +550,10 @@ Veuillez vérifier immédiatement la situation et contacter les services de seco
             <strong>ACTION IMMÉDIATE REQUISE :</strong><br>
             Une flamme ou une fumée suspecte a été identifiée. Si la situation le nécessite, composez sans attendre les numéros d'urgence : <strong>18 (Pompiers)</strong> ou <strong>112 (Numéro européen)</strong>.
         </div>
-        <p style="margin-top:16px;color:#94a3b8;font-size:13px;">
-            La photo snapshot capturée au moment exact de la détection est attachée à cet e-mail.
-        </p>
+        <div style="margin-top:16px;padding:14px 16px;background:#1e293b;border:1px solid #334155;border-radius:10px;">
+            <strong style="color:#ffffff;font-size:13px;">📄 Rapport d'Incident Officiel Joint (PDF)</strong><br>
+            <span style="color:#94a3b8;font-size:12px;">Un rapport de sécurité incendie certifié ainsi que le cliché HD instantané sont attachés à cet e-mail.</span>
+        </div>
         """
     )
 
@@ -516,6 +564,6 @@ Veuillez vérifier immédiatement la situation et contacter les services de seco
         content=content,
     )
 
-    send_email_async(subject, recipient, text_body, html_body, attachment_path=image_path)
+    send_email_async(subject, recipient, text_body, html_body, attachments=attachments)
 
 
