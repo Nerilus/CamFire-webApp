@@ -112,6 +112,21 @@ export const Home: React.FC = () => {
       setIsLoadingForecast(false);
     };
     loadForecast();
+
+    // Auto-synchronisation de l'état de l'appareil (Mode Travaux, statut en direct)
+    const syncDevice = () => {
+      deviceService.getMyDevices().then(devs => {
+        if (devs && devs.length > 0) {
+          setPairedDevice(prev => {
+            const fresh = devs.find(d => prev && d.id === prev.id) || devs[0];
+            return fresh;
+          });
+        }
+      }).catch(() => {});
+    };
+
+    const syncTimer = setInterval(syncDevice, 5000);
+    return () => clearInterval(syncTimer);
   }, []);
 
   const activeForecast = forecasts.find(f => f.id === selectedCamId)?.forecast || [];

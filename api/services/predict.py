@@ -224,6 +224,8 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                     print(f"Erreur écriture fichier snapshot {filepath}")
                     return
 
+                image_url = f"/static/captures/{filename}"
+
                 capture = Capture(
                     user_id=user_id,
                     device_id=device_id or (dev_obj.id if dev_obj else None),
