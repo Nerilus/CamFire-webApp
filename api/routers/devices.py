@@ -860,9 +860,11 @@ async def speak_to_device(
         }
 
 
+@router.head("/{device_id}/audio")
 @router.get("/{device_id}/audio")
 def listen_to_device(
     device_id: str,
+    request: Request,
     ticket: Optional[str] = Query(None),
     token: Optional[str] = Query(None),
     authorization: Optional[str] = Header(None),
@@ -891,17 +893,38 @@ def listen_to_device(
     base_url = device.stream_url.rsplit('/', 1)[0] if '/' in device.stream_url else device.stream_url
     target_url = f"{base_url}/audio"
 
+    # Vérification préalable de la présence d'un microphone physique sur le Pi
+    try:
+        req = urllib.request.Request(target_url)
+        resp = urllib.request.urlopen(req, timeout=5)
+    except urllib.error.HTTPError as he:
+        if he.code == 503:
+            raise HTTPException(
+                status_code=503,
+                detail="Aucun microphone USB détecté sur le Raspberry Pi. Branchez un micro USB sur votre Raspberry Pi pour activer l'écoute."
+            )
+        raise HTTPException(status_code=he.code, detail=f"Erreur audio: {he.reason}")
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Le microphone du Raspberry Pi est actuellement inaccessible ou déconnecté."
+        )
+
+    if request.method == "HEAD":
+        resp.close()
+        return Response(status_code=200, media_type="audio/wav")
+
     def _audio_generator():
         try:
-            req = urllib.request.Request(target_url)
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                while True:
-                    chunk = resp.read(2048)
-                    if not chunk:
-                        break
-                    yield chunk
+            while True:
+                chunk = resp.read(2048)
+                if not chunk:
+                    break
+                yield chunk
         except Exception as err:
-            print(f"[AUDIO] Flux micro indisponible: {err}")
+            print(f"[AUDIO] Fin du flux micro: {err}")
+        finally:
+            resp.close()
 
     return StreamingResponse(_audio_generator(), media_type="audio/wav")
 

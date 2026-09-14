@@ -78,7 +78,18 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
       streamRef.current = stream;
       audioChunksRef.current = [];
 
-      const mediaRecorder = new MediaRecorder(stream);
+      let options: MediaRecorderOptions = {};
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          options = { mimeType: 'audio/webm;codecs=opus' };
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          options = { mimeType: 'audio/webm' };
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          options = { mimeType: 'audio/mp4' };
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (e) => {
@@ -88,17 +99,18 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const chosenType = mediaRecorder.mimeType || options.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: chosenType });
         if (audioBlob.size > 0) {
           setIsSendingAudio(true);
           setTalkFeedback("Transmission au haut-parleur...");
           try {
             await deviceService.speakToDevice(device.device_id, audioBlob);
-            setTalkFeedback("Diffusé sur le haut-parleur");
-            setTimeout(() => setTalkFeedback(null), 3500);
+            setTalkFeedback("Diffusé sur la sortie Pi (Jack 3.5mm / HDMI). Branchez une enceinte.");
+            setTimeout(() => setTalkFeedback(null), 5500);
           } catch (err: any) {
             setTalkFeedback("Erreur: " + err.message);
-            setTimeout(() => setTalkFeedback(null), 4000);
+            setTimeout(() => setTalkFeedback(null), 5000);
           } finally {
             setIsSendingAudio(false);
           }
@@ -114,8 +126,8 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
       setIsRecording(true);
       setTalkFeedback("Enregistrement en cours... Parlez maintenant");
     } catch (err: any) {
-      setTalkFeedback("Micro inaccessible: " + (err.message || "autorisez l'accès"));
-      setTimeout(() => setTalkFeedback(null), 4000);
+      setTalkFeedback("Micro inaccessible: " + (err.message || "autorisez l'accès micro"));
+      setTimeout(() => setTalkFeedback(null), 5000);
     }
   };
 
@@ -127,22 +139,42 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
   };
 
   // --- 2. Écoute à distance (Microphone Raspberry Pi) ---
-  const toggleListening = () => {
+  const toggleListening = async () => {
     if (isListening) {
       if (audioPlayerRef.current) {
         audioPlayerRef.current.pause();
         audioPlayerRef.current.src = "";
       }
       setIsListening(false);
+      setTalkFeedback(null);
     } else {
       const audioUrl = deviceService.getAudioStreamUrl(device.device_id);
+      setTalkFeedback("Vérification du micro sur le Pi...");
+      try {
+        const check = await fetch(audioUrl, { method: 'HEAD' });
+        if (!check.ok) {
+          const errData = await check.json().catch(() => ({}));
+          setTalkFeedback(errData.detail || "Aucun micro USB branché sur le Pi. Connectez un micro USB.");
+          setTimeout(() => setTalkFeedback(null), 6000);
+          return;
+        }
+      } catch {
+        setTalkFeedback("Aucun micro USB détecté sur le Raspberry Pi. Branchez un micro USB.");
+        setTimeout(() => setTalkFeedback(null), 6000);
+        return;
+      }
+
       if (audioPlayerRef.current) {
         audioPlayerRef.current.src = audioUrl;
-        audioPlayerRef.current.play().catch(e => {
-          console.warn("Écoute audio:", e);
+        audioPlayerRef.current.play().then(() => {
+          setIsListening(true);
+          setTalkFeedback("Écoute audio active");
+        }).catch(() => {
+          setTalkFeedback("Micro indisponible (branchez un micro USB sur le Pi)");
+          setIsListening(false);
+          setTimeout(() => setTalkFeedback(null), 5000);
         });
       }
-      setIsListening(true);
     }
   };
 
@@ -220,7 +252,7 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
           onTouchStart={(e) => { e.preventDefault(); startRecording(); }}
           onTouchEnd={(e) => { e.preventDefault(); stopRecording(); }}
           disabled={isSendingAudio}
-          title="Maintenez appuyé pour parler via le haut-parleur"
+          title="Maintenez appuyé pour parler via le haut-parleur (Jack 3.5mm)"
         >
           <div className="pad-btn-icon-wrap">
             <MicIcon size={17} />
@@ -231,7 +263,7 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
               {isRecording ? "En direct..." : isSendingAudio ? "Envoi..." : "Interphone"}
             </span>
             <span className="pad-btn-hint">
-              {isRecording ? "Relâcher" : "Maintenir (PTT)"}
+              {isRecording ? "Relâcher pour diffuser" : "Maintenir (Sortie Jack)"}
             </span>
           </div>
         </button>
@@ -241,7 +273,7 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
           type="button"
           className={`pad-btn listen-btn ${isListening ? 'active' : ''}`}
           onClick={toggleListening}
-          title={isListening ? "Couper l'écoute audio" : "Écouter le micro en direct"}
+          title={isListening ? "Couper l'écoute audio" : "Écouter le micro en direct (Micro USB requis)"}
         >
           <div className="pad-btn-icon-wrap">
             {isListening ? <VolumeXIcon size={17} /> : <VolumeIcon size={17} />}
@@ -251,7 +283,7 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
               {isListening ? "Écoute ON" : "Écouter Direct"}
             </span>
             <span className="pad-btn-hint">
-              {isListening ? "Flux connecté" : "Ambiance sonore"}
+              {isListening ? "Flux connecté" : "Micro USB requis"}
             </span>
           </div>
         </button>
