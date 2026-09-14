@@ -708,22 +708,28 @@ def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
             while True:
                 # 0. Vérification en temps réel du Mode Travaux (Écran noir de confidentialité)
                 is_maint_active = False
-                if device_id:
-                    try:
-                        from db.database import SessionLocal
-                        from db.models import Device
-                        with SessionLocal() as db_session:
-                            d_check = db_session.query(Device).filter(Device.device_id == device_id.strip()).first()
-                            if d_check and d_check.is_maintenance_mode:
-                                if d_check.maintenance_until and datetime.utcnow() > d_check.maintenance_until:
-                                    d_check.is_maintenance_mode = False
-                                    d_check.maintenance_until = None
-                                    db_session.commit()
-                                else:
-                                    is_maint_active = True
-                                    dev_privacy_masks = d_check.privacy_masks
-                    except Exception:
-                        pass
+                try:
+                    from db.database import SessionLocal
+                    from db.models import Device
+                    with SessionLocal() as db_session:
+                        d_check = None
+                        if device_id:
+                            d_check = db_session.query(Device).filter(Device.device_id == str(device_id).strip()).first()
+                            if not d_check and str(device_id).isdigit():
+                                d_check = db_session.query(Device).filter(Device.id == int(device_id)).first()
+                        if not d_check:
+                            d_check = db_session.query(Device).filter(Device.is_maintenance_mode == True).first()
+
+                        if d_check and d_check.is_maintenance_mode:
+                            if d_check.maintenance_until and datetime.utcnow() > d_check.maintenance_until:
+                                d_check.is_maintenance_mode = False
+                                d_check.maintenance_until = None
+                                db_session.commit()
+                            else:
+                                is_maint_active = True
+                                dev_privacy_masks = d_check.privacy_masks
+                except Exception:
+                    pass
 
                 if is_maint_active:
                     black_screen = np.zeros((480, 640, 3), dtype=np.uint8)

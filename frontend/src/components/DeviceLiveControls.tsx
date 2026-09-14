@@ -50,9 +50,8 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
 
   // Mode Travaux
   const [isMaintenance, setIsMaintenance] = useState(device.is_maintenance_mode || false);
-  const [maintenanceHours, setMaintenanceHours] = useState<number>(2);
   const [isMaintenanceLoading, setIsMaintenanceLoading] = useState(false);
-  const [showDurationPicker, setShowDurationPicker] = useState(false);
+  const maintenanceHours = 2;
 
   useEffect(() => {
     setIsAlarmActive(device.alarm_active || false);
@@ -163,14 +162,15 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
   };
 
   // --- 4. Mode Travaux (Pause détection) ---
-  const handleToggleMaintenance = async () => {
+  const handleToggleMaintenance = async (customHours?: number) => {
     setIsMaintenanceLoading(true);
     const nextState = !isMaintenance;
+    const hours = customHours !== undefined ? customHours : maintenanceHours;
     try {
       const res = await deviceService.toggleMaintenance(
         device.device_id, 
         nextState, 
-        nextState ? (maintenanceHours > 0 ? maintenanceHours : undefined) : undefined
+        nextState ? (hours > 0 ? hours : undefined) : undefined
       );
       setIsMaintenance(res.is_maintenance_mode);
       onDeviceUpdate?.({ 
@@ -194,17 +194,17 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
         <div className="maintenance-active-banner">
           <WrenchIcon size={16} className="wrench-pulse" />
           <div className="maintenance-banner-text">
-            <strong>Mode Travaux actif</strong>
-            <span>Détection incendie suspendue {device.maintenance_until && parseUtcDate(device.maintenance_until) ? `jusqu'à ${parseUtcDate(device.maintenance_until)!.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>
+            <strong>MODE TRAVAUX ACTIF</strong>
+            <span>Flux occulté (écran noir) · Zéro détection · Zéro e-mail {device.maintenance_until && parseUtcDate(device.maintenance_until) ? `(jusqu'à ${parseUtcDate(device.maintenance_until)!.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})` : ''}</span>
           </div>
           <button
             type="button"
             className="maintenance-resume-btn"
-            onClick={handleToggleMaintenance}
+            onClick={() => handleToggleMaintenance()}
             disabled={isMaintenanceLoading}
-            title="Réactiver immédiatement la surveillance IA"
+            title="Rétablir la surveillance normale et la caméra"
           >
-            Reprendre
+            Rétablir
           </button>
         </div>
       )}
@@ -277,29 +277,23 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
           </div>
         </button>
 
-        {/* BOUTON 4 : Mode Travaux / Pause Surveillance */}
+        {/* BOUTON 4 : Mode Travaux / Pause Surveillance (1 clic immédiat) */}
         <button
           type="button"
           className={`pad-btn maintenance-btn ${isMaintenance ? 'active' : ''}`}
-          onClick={() => {
-            if (isMaintenance) {
-              handleToggleMaintenance();
-            } else {
-              setShowDurationPicker(prev => !prev);
-            }
-          }}
+          onClick={() => handleToggleMaintenance()}
           disabled={isMaintenanceLoading}
-          title="Suspendre temporairement les alertes lors de travaux"
+          title={isMaintenance ? "Désactiver le mode travaux et rétablir la caméra" : "Activer le Mode Travaux (écran noir, zéro détection, zéro e-mail)"}
         >
           <div className="pad-btn-icon-wrap">
             <WrenchIcon size={17} />
           </div>
           <div className="pad-btn-content">
             <span className="pad-btn-title">
-              {isMaintenance ? "Travaux ON" : "Mode Travaux"}
+              {isMaintenance ? "Travaux ACTIF" : "Mode Travaux"}
             </span>
             <span className="pad-btn-hint">
-              {isMaintenance ? "Surveillance pause" : "Poussière & Fumée"}
+              {isMaintenance ? "Écran noir · Pause" : "Occulter & Couper"}
             </span>
           </div>
         </button>
@@ -309,44 +303,6 @@ export const DeviceLiveControls: React.FC<DeviceLiveControlsProps> = ({ device, 
       {talkFeedback && (
         <div className={`talk-feedback-pill ${talkFeedback.includes('Diffusé') ? 'success' : talkFeedback.includes('Erreur') ? 'error' : ''}`}>
           <span>{talkFeedback}</span>
-        </div>
-      )}
-
-      {/* Sélecteur de durée Travaux (Inline popover) */}
-      {showDurationPicker && !isMaintenance && (
-        <div className="maintenance-inline-picker">
-          <span className="picker-label">Durée :</span>
-          <div className="picker-chips">
-            {[1, 2, 4, 8].map(h => (
-              <button
-                key={h}
-                type="button"
-                className={`picker-chip ${maintenanceHours === h ? 'selected' : ''}`}
-                onClick={() => setMaintenanceHours(h)}
-              >
-                {h}h
-              </button>
-            ))}
-            <button
-              type="button"
-              className={`picker-chip ${maintenanceHours === 0 ? 'selected' : ''}`}
-              onClick={() => setMaintenanceHours(0)}
-              title="Jusqu'à réactivation manuelle"
-            >
-              Max
-            </button>
-          </div>
-          <button
-            type="button"
-            className="picker-apply-btn"
-            onClick={() => {
-              setShowDurationPicker(false);
-              handleToggleMaintenance();
-            }}
-            disabled={isMaintenanceLoading}
-          >
-            Activer
-          </button>
         </div>
       )}
     </div>

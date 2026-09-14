@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon, TrashIcon, MailIcon,
   ShieldIcon, ActivityIcon, CpuIcon, HardDriveIcon, WifiIcon, BatteryIcon,
-  PlayIcon, SquareIcon, SirenIcon
+  PlayIcon, SquareIcon, SirenIcon, WrenchIcon
 } from '../components/icons';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
@@ -623,7 +623,118 @@ export const Settings: React.FC = () => {
         )}
       </section>
 
-      {/* 2. ALERTES E-MAIL D'URGENCE AVEC PHOTO */}
+      {/* 2. MODE TRAVAUX & OCCULTATION CAMÉRA (VIE PRIVÉE) */}
+      <section className="settings-section">
+        <div className="emergency-header-row">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <WrenchIcon size={18} style={{ color: '#f59e0b' }} />
+            <h2 className="settings-section-title" style={{ margin: 0 }}>MODE TRAVAUX & OCCULTATION CAMÉRA (VIE PRIVÉE)</h2>
+          </div>
+        </div>
+
+        <div className="emergency-box" style={{ borderColor: 'rgba(245, 158, 11, 0.3)' }}>
+          <p className="emergency-desc">
+            En cas de travaux, passage d'artisans ou maintenance : activez le <strong>Mode Travaux</strong>. 
+            Le flux vidéo est <strong>totalement noirci</strong> (respect de la vie privée), l'IA arrête les détections de personnes et de fumée, et <strong>aucun e-mail ni notification Discord</strong> n'est envoyé.
+          </p>
+
+          {ownedDevices.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '14px' }}>
+              {ownedDevices.map((dev) => {
+                const isMaint = !!dev.is_maintenance_mode;
+                const maintUntil = dev.maintenance_until ? parseUtcDate(dev.maintenance_until) : null;
+                return (
+                  <div 
+                    key={dev.id} 
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '12px',
+                      background: isMaint ? 'rgba(245, 158, 11, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+                      border: `1px solid ${isMaint ? 'rgba(245, 158, 11, 0.4)' : 'var(--border)'}`,
+                      borderRadius: '12px',
+                      padding: '14px 16px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <strong style={{ color: '#fff', fontSize: '15px' }}>{dev.name}</strong>
+                        <span 
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            background: isMaint ? 'rgba(245, 158, 11, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                            color: isMaint ? '#f59e0b' : '#22c55e'
+                          }}
+                        >
+                          {isMaint ? 'MODE TRAVAUX ACTIF' : 'SURVEILLANCE ACTIVE'}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '12px', color: 'var(--text-faint)' }}>
+                        {isMaint 
+                          ? `Flux occulté (écran noir) · Détection arrêtée · Zéro alerte ${maintUntil ? `jusqu'à ${maintUntil.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : '(durée continue)'}`
+                          : 'Caméra en direct et détection IA incendie/personnes opérationnelles'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        style={{
+                          padding: '8px 16px',
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          borderRadius: '10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          background: isMaint ? '#ef4444' : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                          color: '#fff',
+                          border: 'none',
+                          boxShadow: isMaint ? '0 4px 12px rgba(239, 68, 68, 0.3)' : '0 4px 12px rgba(245, 158, 11, 0.25)'
+                        }}
+                        onClick={async () => {
+                          try {
+                            const next = !isMaint;
+                            await deviceService.toggleMaintenance(dev.device_id, next, next ? 2 : undefined);
+                            setOwnedDevices((prev) =>
+                              prev.map((d) =>
+                                d.id === dev.id
+                                  ? {
+                                      ...d,
+                                      is_maintenance_mode: next,
+                                      maintenance_until: next ? new Date(Date.now() + 2 * 3600000).toISOString() : null
+                                    }
+                                  : d
+                              )
+                            );
+                          } catch (err: any) {
+                            alert('Erreur Mode Travaux : ' + err.message);
+                          }
+                        }}
+                      >
+                        <WrenchIcon size={15} />
+                        {isMaint ? 'Désactiver (Rétablir caméra)' : 'Activer Mode Travaux (Écran noir)'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ fontSize: '13px', color: 'var(--text-faint)', marginTop: '8px' }}>
+              Aucun équipement appairé pour le moment.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* 3. ALERTES E-MAIL D'URGENCE AVEC PHOTO */}
       <section className="settings-section">
         <div className="emergency-header-row">
           <h2 className="settings-section-title" style={{ margin: 0 }}>ALERTES E-MAIL D'URGENCE (PHOTO SNAPSHOT)</h2>
