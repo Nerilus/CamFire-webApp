@@ -196,21 +196,37 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
             filename = f"{detection_type}_{timestamp_str}.jpg"
             filepath = os.path.join(CAPTURES_DIR, filename)
 
-            # Écriture de l'image JPEG sur le disque
-            success = cv2.imwrite(filepath, image_np)
-            if not success:
-                print(f"Erreur écriture fichier snapshot {filepath}")
-                return
-
-            image_url = f"/static/captures/{filename}"
-
             from db.database import SessionLocal
-            from db.models import Capture, Alert
+            from db.models import Capture, Alert, Device
             db = SessionLocal()
             try:
+                # 1. Vérification prioritaire et absolue du Mode Travaux (Blocage total captures, e-mails, Discord)
+                dev_obj = None
+                if device_id:
+                    dev_obj = db.query(Device).filter(Device.id == device_id).first()
+                if not dev_obj and location:
+                    dev_obj = db.query(Device).filter(Device.name == location).first()
+                if not dev_obj:
+                    dev_obj = db.query(Device).filter(Device.is_maintenance_mode == True).first()
+
+                if dev_obj and getattr(dev_obj, "is_maintenance_mode", False):
+                    if dev_obj.maintenance_until and now_dt > dev_obj.maintenance_until:
+                        dev_obj.is_maintenance_mode = False
+                        dev_obj.maintenance_until = None
+                        db.commit()
+                    else:
+                        print(f"[MODE TRAVAUX ACTIF] Détection {detection_type.upper()} ({status.upper()}) BLOQUÉE pour {location} — Zéro enregistrement, zéro e-mail, zéro Discord.")
+                        return
+
+                # Écriture de l'image JPEG sur le disque
+                success = cv2.imwrite(filepath, image_np)
+                if not success:
+                    print(f"Erreur écriture fichier snapshot {filepath}")
+                    return
+
                 capture = Capture(
                     user_id=user_id,
-                    device_id=device_id,
+                    device_id=device_id or (dev_obj.id if dev_obj else None),
                     detection_type=detection_type,
                     status=status,
                     confidence=confidence,
@@ -219,24 +235,6 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                     created_at=now_dt
                 )
                 db.add(capture)
-
-                # Vérification du Mode Travaux (désactivation temporaire pour travaux/fumées de bricolage)
-                from db.models import Device
-                dev_obj = None
-                if device_id:
-                    dev_obj = db.query(Device).filter(Device.id == device_id).first()
-                if not dev_obj and location:
-                    dev_obj = db.query(Device).filter(Device.name == location).first()
-
-                if dev_obj and getattr(dev_obj, "is_maintenance_mode", False):
-                    # Vérification d'expiration automatique
-                    if dev_obj.maintenance_until and now_dt > dev_obj.maintenance_until:
-                        dev_obj.is_maintenance_mode = False
-                        dev_obj.maintenance_until = None
-                        db.commit()
-                    else:
-                        print(f"[MODE TRAVAUX ACTIF] Détection {status.upper()} ignorée pour {location} — Alertes et emails suspendus.")
-                        return
 
                 alert = Alert(
                     status=status,
@@ -441,6 +439,31 @@ def _ai_worker_loop():
             continue
             
         try:
+            # 0. Contrôle prioritaire du Mode Travaux : si activé, TOUTE l'inférence IA, toutes les alertes et captures sont coupées
+            dev_in_maintenance = False
+            try:
+                from db.database import SessionLocal
+                from db.models import Device
+                with SessionLocal() as db_session:
+                    maint_dev = db_session.query(Device).filter(Device.is_maintenance_mode == True).first()
+                    if maint_dev:
+                        if maint_dev.maintenance_until and datetime.utcnow() > maint_dev.maintenance_until:
+                            maint_dev.is_maintenance_mode = False
+                            maint_dev.maintenance_until = None
+                            db_session.commit()
+                        else:
+                            dev_in_maintenance = True
+            except Exception:
+                pass
+
+            if dev_in_maintenance:
+                with _ai_lock:
+                    _current_boxes = []
+                latest_detection["fire"] = False
+                latest_detection["person"] = False
+                time.sleep(0.4)
+                continue
+
             # 1. Inférence Personne en priorité
             results_person = _person_model.predict(source=frame_to_process, classes=[0], conf=0.35, verbose=False)
             person_boxes_raw = []
@@ -681,6 +704,43 @@ def generate_video_stream(camera_url: str, device_id: Optional[str] = None):
 
             print("Connexion établie. Diffusion fluide du flux vidéo...")
             while True:
+                # 0. Vérification en temps réel du Mode Travaux (Écran noir de confidentialité)
+                is_maint_active = False
+                if device_id:
+                    try:
+                        from db.database import SessionLocal
+                        from db.models import Device
+                        with SessionLocal() as db_session:
+                            d_check = db_session.query(Device).filter(Device.device_id == device_id.strip()).first()
+                            if d_check and d_check.is_maintenance_mode:
+                                if d_check.maintenance_until and datetime.utcnow() > d_check.maintenance_until:
+                                    d_check.is_maintenance_mode = False
+                                    d_check.maintenance_until = None
+                                    db_session.commit()
+                                else:
+                                    is_maint_active = True
+                                    dev_privacy_masks = d_check.privacy_masks
+                    except Exception:
+                        pass
+
+                if is_maint_active:
+                    black_screen = np.zeros((480, 640, 3), dtype=np.uint8)
+                    cv2.putText(black_screen, "MODE TRAVAUX ACTIF", (160, 220),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 165, 255), 2, cv2.LINE_AA)
+                    cv2.putText(black_screen, "Flux video occulte - Respect de la vie privee", (120, 260),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (160, 160, 160), 1, cv2.LINE_AA)
+                    cv2.putText(black_screen, "Surveillance IA, alertes et e-mails suspendus", (105, 290),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (120, 120, 120), 1, cv2.LINE_AA)
+                    ret_enc, buffer = cv2.imencode('.jpg', black_screen, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                    if ret_enc:
+                        frame_bytes = buffer.tobytes()
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n'
+                               b'Content-Length: ' + str(len(frame_bytes)).encode() + b'\r\n\r\n' + 
+                               frame_bytes + b'\r\n')
+                    time.sleep(0.4)
+                    continue
+
                 ret, frame = cap.read()
                 if not ret:
                     raise Exception("Perte du flux video ou fin du stream")

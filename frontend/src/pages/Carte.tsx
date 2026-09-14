@@ -6,7 +6,7 @@ import {
   FlameIcon, XIcon, RefreshIcon, MaximizeIcon, PinIcon, RadioIcon, ListIcon, 
   FlashIcon, TrashIcon, GpsIcon, PlusIcon, GlobeIcon, WindIcon, DropletIcon, 
   PhoneIcon, CopyIcon, CheckCircleIcon, SearchIcon, DatabaseIcon, TruckIcon,
-  SparklesIcon, LockIcon
+  SparklesIcon, LockIcon, WrenchIcon
 } from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
 import { DeviceLiveControls } from '../components/DeviceLiveControls';
@@ -1039,6 +1039,40 @@ export const Carte: React.FC = () => {
                     alt="Flux en direct du site" 
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                   />
+                  {selectedSite.device.is_maintenance_mode && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: '#090d16',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      zIndex: 3,
+                      color: '#f8fafc',
+                      textAlign: 'center',
+                      padding: '12px'
+                    }}>
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: 'rgba(234, 179, 8, 0.15)',
+                        border: '1px solid rgba(234, 179, 8, 0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#eab308'
+                      }}>
+                        <WrenchIcon size={18} />
+                      </div>
+                      <strong style={{ fontSize: '12px', letterSpacing: '0.4px' }}>MODE TRAVAUX ACTIF</strong>
+                      <span style={{ fontSize: '10.5px', color: '#94a3b8', maxWidth: '240px' }}>
+                        Écran occulté · Détection IA et alertes en pause
+                      </span>
+                    </div>
+                  )}
                   <span className="feed-status-tag">EN DIRECT</span>
                   <div style={{ position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '4px 8px', borderRadius: '6px', fontSize: '10.5px', color: '#fff' }}>
                     {selectedSite.device.name}

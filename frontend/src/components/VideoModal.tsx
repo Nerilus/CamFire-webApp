@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { XIcon, MaximizeIcon, MinimizeIcon, CameraIcon, LockIcon } from './icons';
+import { XIcon, MaximizeIcon, MinimizeIcon, CameraIcon, LockIcon, WrenchIcon } from './icons';
 import { DeviceLiveControls, type DeviceLike } from './DeviceLiveControls';
 import './VideoModal.css';
 
@@ -98,7 +98,52 @@ export const VideoModal: React.FC<VideoModalProps> = ({
           </div>
         </div>
 
-        <div className="video-modal-body">
+        <div className="video-modal-body" style={{ position: 'relative' }}>
+          {device?.is_maintenance_mode && (
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              background: '#090d16',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+              zIndex: 3,
+              color: '#f8fafc',
+              textAlign: 'center',
+              padding: '24px'
+            }}>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                background: 'rgba(234, 179, 8, 0.15)',
+                border: '1px solid rgba(234, 179, 8, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#eab308'
+              }}>
+                <WrenchIcon size={28} />
+              </div>
+              <strong style={{ fontSize: '18px', letterSpacing: '0.5px' }}>MODE TRAVAUX ACTIF</strong>
+              <span style={{ fontSize: '13px', color: '#94a3b8', maxWidth: '380px', lineHeight: 1.5 }}>
+                Écran noir de protection de la vie privée. La détection IA, les e-mails d'alerte et les notifications sont suspendus.
+              </span>
+              <span style={{
+                fontSize: '12px',
+                color: '#eab308',
+                background: 'rgba(234, 179, 8, 0.1)',
+                padding: '4px 12px',
+                borderRadius: '20px',
+                border: '1px solid rgba(234, 179, 8, 0.25)'
+              }}>
+                {device.maintenance_until ? `Jusqu'à ${new Date(device.maintenance_until).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'Surveillance en pause'}
+              </span>
+            </div>
+          )}
+
           {streamUrl ? (
             <img
               src={streamUrl}
