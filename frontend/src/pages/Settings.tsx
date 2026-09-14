@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   PlusIcon, MinusIcon, GlobeIcon, ChevronRightIcon, TrashIcon, MailIcon,
-  ShieldIcon, ActivityIcon, CpuIcon, HardDriveIcon, WifiIcon, BatteryIcon
+  ShieldIcon, ActivityIcon, CpuIcon, HardDriveIcon, WifiIcon, BatteryIcon,
+  PlayIcon, SquareIcon, SirenIcon
 } from '../components/icons';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useAuth } from '../context/AuthContext';
@@ -13,6 +14,50 @@ import { DeviceLiveControls } from '../components/DeviceLiveControls';
 import './Settings.css';
 
 type Sensitivity = 'low' | 'medium' | 'high';
+
+export interface AlarmSoundOption {
+  id: string;
+  name: string;
+  tag: string;
+  tagColor: string;
+  description: string;
+  file: string;
+}
+
+export const ALARM_SOUND_OPTIONS: AlarmSoundOption[] = [
+  {
+    id: 'iso',
+    name: 'Alarme Incendie Évacuation (Norme ISO 8201 / T3)',
+    tag: 'Recommandé · Standard SSI',
+    tagColor: '#ef4444',
+    description: 'Signal saccadé officiel (Bip-Bip-Bip strident à 950 Hz). Le son universel des détecteurs de fumée et centrales SSI.',
+    file: 'alarme_incendie_iso.wav'
+  },
+  {
+    id: 'nfs',
+    name: 'Alarme Incendie ERP (Norme NF S 32-001)',
+    tag: 'Réglementation France',
+    tagColor: '#f97316',
+    description: 'Modulation continue descendante et ondulante (500 Hz à 1200 Hz). Son d’évacuation officiel des bâtiments publics.',
+    file: 'alarme_incendie_nfs.wav'
+  },
+  {
+    id: 'whoop',
+    name: 'Sirène Feux de Forêt & Industrielle (Whoop)',
+    tag: 'Plein Air & Dissuasion',
+    tagColor: '#eab308',
+    description: 'Balayage de fréquence montant ultra-rapide (500 Hz à 1700 Hz), agressif et audible à très longue distance.',
+    file: 'sirene_whoop_foret.wav'
+  },
+  {
+    id: 'pompiers',
+    name: 'Sirène Sapeurs-Pompiers (Pin-Pon 2 tons)',
+    tag: 'Secours d’Urgence',
+    tagColor: '#38bdf8',
+    description: 'Deux-tons officiel des services de secours français (alternance Fa 435 Hz / Sol 488 Hz).',
+    file: 'sirene_pompiers.wav'
+  }
+];
 
 const parseMasks = (raw?: string | null): Array<{ label: string; x: number; y: number; width: number; height: number }> => {
   if (!raw) return [];
@@ -37,6 +82,13 @@ export const Settings: React.FC = () => {
   const [autoScan, setAutoScan] = useState(true);
   const [interval, setIntervalValue] = useState(60);
   const [sensitivity, setSensitivity] = useState<Sensitivity>('high');
+
+  // Bibliothèque de sons d'alarme
+  const [selectedAlarmSound, setSelectedAlarmSound] = useState<string>(() => {
+    return localStorage.getItem('camfire_alarm_sound') || 'alarme_incendie_iso.wav';
+  });
+  const [playingSound, setPlayingSound] = useState<string | null>(null);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
 
   // Contacts d'urgence
   const [contacts, setContacts] = useState<EmergencyContact[]>([]);
@@ -79,8 +131,46 @@ export const Settings: React.FC = () => {
       loadTeamData(true);
     }, 6000);
 
-    return () => clearInterval(intervalTimer);
+    return () => {
+      clearInterval(intervalTimer);
+      if (audioPreviewRef.current) {
+        audioPreviewRef.current.pause();
+      }
+    };
   }, []);
+
+  const handleTogglePlaySound = (filename: string) => {
+    if (playingSound === filename) {
+      if (audioPreviewRef.current) {
+        audioPreviewRef.current.pause();
+        audioPreviewRef.current.currentTime = 0;
+      }
+      setPlayingSound(null);
+      return;
+    }
+
+    if (audioPreviewRef.current) {
+      audioPreviewRef.current.pause();
+    }
+
+    const audio = new Audio(`/sounds/${filename}`);
+    audioPreviewRef.current = audio;
+    audio.play().then(() => {
+      setPlayingSound(filename);
+    }).catch((err) => {
+      console.warn("Erreur lecture prévisualisation son:", err);
+      setPlayingSound(null);
+    });
+
+    audio.onended = () => {
+      setPlayingSound(null);
+    };
+  };
+
+  const handleSelectAlarmSound = (filename: string) => {
+    setSelectedAlarmSound(filename);
+    localStorage.setItem('camfire_alarm_sound', filename);
+  };
 
   const loadContacts = async () => {
     try {
@@ -644,7 +734,76 @@ export const Settings: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. SCAN AUTOMATIQUE */}
+      {/* 3. BIBLIOTHÈQUE DE SONS D'ALARME INCENDIE & SIRÈNES */}
+      <section className="settings-section">
+        <div className="emergency-header-row">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <SirenIcon size={18} color="#ef4444" />
+            <h2 className="settings-section-title" style={{ margin: 0 }}>BIBLIOTHÈQUE DE SONS D'ALARME & SIRÈNES</h2>
+          </div>
+          <span className="emergency-badge-count">
+            {ALARM_SOUND_OPTIONS.length} tonalités
+          </span>
+        </div>
+
+        <div className="alarm-library-box">
+          <p className="emergency-desc">
+            Choisissez la tonalité diffusée par le <strong>haut-parleur du Raspberry Pi</strong> lors du déclenchement de la sirène et sur <strong>votre écran de contrôle</strong> dès qu'un départ de feu est repéré. Cliquez sur <strong>Écouter</strong> pour prévisualiser chaque alarme.
+          </p>
+
+          <div className="alarm-sound-list">
+            {ALARM_SOUND_OPTIONS.map((snd) => {
+              const isSelected = selectedAlarmSound === snd.file;
+              const isPlaying = playingSound === snd.file;
+
+              return (
+                <div key={snd.id} className={`alarm-sound-card ${isSelected ? 'selected' : ''}`}>
+                  <div className="alarm-sound-info">
+                    <div className="alarm-sound-top">
+                      <strong className="alarm-sound-name">{snd.name}</strong>
+                      <span className="alarm-sound-tag" style={{ color: snd.tagColor, borderColor: `${snd.tagColor}50`, backgroundColor: `${snd.tagColor}15` }}>
+                        {snd.tag}
+                      </span>
+                    </div>
+                    <p className="alarm-sound-desc">{snd.description}</p>
+                  </div>
+
+                  <div className="alarm-sound-actions">
+                    <button
+                      type="button"
+                      className={`alarm-preview-btn ${isPlaying ? 'playing' : ''}`}
+                      onClick={() => handleTogglePlaySound(snd.file)}
+                      title={isPlaying ? 'Arrêter la lecture' : 'Écouter cet enregistrement sonore'}
+                    >
+                      {isPlaying ? (
+                        <>
+                          <SquareIcon size={14} />
+                          <span>Arrêter</span>
+                        </>
+                      ) : (
+                        <>
+                          <PlayIcon size={14} />
+                          <span>Écouter</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`alarm-select-btn ${isSelected ? 'active' : ''}`}
+                      onClick={() => handleSelectAlarmSound(snd.file)}
+                    >
+                      {isSelected ? '✓ Sélectionnée' : 'Choisir'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* 4. SCAN AUTOMATIQUE */}
       <section className="settings-section">
         <h2 className="settings-section-title">SCAN AUTOMATIQUE</h2>
         <div className="settings-row">

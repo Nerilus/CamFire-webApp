@@ -35,9 +35,24 @@ class NotificationService {
   }
 
   /**
-   * Joue une tonalité de bip d'alerte tactique via l'AudioContext du navigateur
+   * Joue l'alarme incendie sélectionnée ou une tonalité d'urgence
    */
   playEmergencyChime() {
+    const chosenSound = typeof window !== 'undefined' ? localStorage.getItem('camfire_alarm_sound') || 'alarme_incendie_iso.wav' : 'alarme_incendie_iso.wav';
+    try {
+      const audio = new Audio(`/sounds/${chosenSound}`);
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          this.fallbackChime();
+        });
+      }
+    } catch {
+      this.fallbackChime();
+    }
+  }
+
+  fallbackChime() {
     try {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!this.audioCtx) {
@@ -53,7 +68,7 @@ class NotificationService {
       const osc1 = this.audioCtx.createOscillator();
       const gain1 = this.audioCtx.createGain();
       osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(880, now); // La
+      osc1.frequency.setValueAtTime(880, now);
       gain1.gain.setValueAtTime(0.3, now);
       gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
       osc1.connect(gain1);

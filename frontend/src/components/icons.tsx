@@ -458,3 +458,16 @@ export const SparklesIcon: React.FC<IconProps & { style?: React.CSSProperties }>
     <path d="M12 3l1.912 5.813a2 2 0 001.275 1.275L21 12l-5.813 1.912a2 2 0 00-1.275 1.275L12 21l-1.912-5.813a2 2 0 00-1.275-1.275L3 12l5.813-1.912a2 2 0 001.275-1.275L12 3z" />
   </svg>
 );
+
+export const PlayIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" />
+  </svg>
+);
+
+export const SquareIcon: React.FC<IconProps & { style?: React.CSSProperties }> = ({ size, className, style }) => (
+  <svg {...base(size)} className={className} style={style}>
+    <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
+  </svg>
+);
+
