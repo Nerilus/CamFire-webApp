@@ -12,7 +12,8 @@ import {
   ThermometerIcon,
   WindIcon,
   DropletIcon,
-  ShieldAlertIcon
+  ShieldAlertIcon,
+  WrenchIcon
 } from '../components/icons';
 import { VideoModal } from '../components/VideoModal';
 import { DeviceLiveControls } from '../components/DeviceLiveControls';
@@ -571,6 +572,50 @@ export const Home: React.FC = () => {
               alt="Flux en direct de la caméra" 
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
+            {pairedDevice.is_maintenance_mode && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: '#090d16',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '10px',
+                zIndex: 3,
+                color: '#f8fafc',
+                textAlign: 'center',
+                padding: '20px'
+              }}>
+                <div style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  background: 'rgba(234, 179, 8, 0.15)',
+                  border: '1px solid rgba(234, 179, 8, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#eab308'
+                }}>
+                  <WrenchIcon size={22} />
+                </div>
+                <strong style={{ fontSize: '15px', letterSpacing: '0.5px' }}>MODE TRAVAUX ACTIF</strong>
+                <span style={{ fontSize: '12px', color: '#94a3b8', maxWidth: '320px' }}>
+                  Écran occulté pour le respect de la vie privée. La détection IA, les e-mails et les alertes sont suspendus.
+                </span>
+                <span style={{
+                  fontSize: '11px',
+                  color: '#eab308',
+                  background: 'rgba(234, 179, 8, 0.1)',
+                  padding: '3px 10px',
+                  borderRadius: '20px',
+                  border: '1px solid rgba(234, 179, 8, 0.25)'
+                }}>
+                  {pairedDevice.maintenance_until ? `Jusqu'à ${new Date(pairedDevice.maintenance_until).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'Surveillance en pause'}
+                </span>
+              </div>
+            )}
             {pairedDevice.tamper_status === 'tampered' ? (
               <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'rgba(220, 38, 38, 0.9)', padding: '5px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, color: '#fff', border: '1px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', gap: '6px', backdropFilter: 'blur(4px)', boxShadow: '0 0 15px rgba(220,38,38,0.6)' }}>
                 <span className="live-dot" style={{ background: '#fff', width: '7px', height: '7px' }}></span>
