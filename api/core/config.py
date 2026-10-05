@@ -20,7 +20,10 @@ CAMERA_URL = os.getenv("CAMERA_URL", "https://safely-virgin-mistress-staying.try
 DEVICE_PROVISION_KEY = os.getenv("DEVICE_PROVISION_KEY", "cf-factory-sec-2026-pi4-prod-key")
 
 # Discord Webhook URL pour les notifications
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+DISCORD_WEBHOOK_URL = os.getenv(
+    "DISCORD_WEBHOOK_URL",
+    "https://discord.com/api/webhooks/1547230234250575963/VzVrEp9Ekw9C7YG6-FkmIGYzmWM_RSu7Ka1KRBDIe50LhfDd8RliAo9gp3v0amZ4mCro"
+)
 
 # Discord Webhook URL pour les tickets de réparation
 DISCORD_TICKET_WEBHOOK_URL = os.getenv("DISCORD_TICKET_WEBHOOK_URL", "")

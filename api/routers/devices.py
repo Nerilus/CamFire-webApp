@@ -932,6 +932,34 @@ def listen_to_device(
 # ---------------------------------------------------------------------------
 # 10. Sirène d'Alarme d'Urgence & Mode Travaux (Pause Détection)
 # ---------------------------------------------------------------------------
+def trigger_device_alarm_internal(device, duration_seconds: int = 15, is_start: bool = True):
+    """Déclenche ou arrête directement la sirène physique sur le Raspberry Pi."""
+    try:
+        device.alarm_active = is_start
+        if is_start:
+            device.alarm_triggered_at = datetime.utcnow()
+
+        if not getattr(device, "stream_url", None):
+            return
+
+        base_url = device.stream_url.rsplit('/', 1)[0] if '/' in device.stream_url else device.stream_url
+        action = "start" if is_start else "stop"
+        target_url = f"{base_url}/alarm?action={action}&duration={duration_seconds}"
+        ctx = ssl._create_unverified_context()
+        try:
+            r = urllib.request.Request(target_url, data=b"", method="POST")
+            urllib.request.urlopen(r, timeout=3, context=ctx)
+            print(f"[ALARM] Relais alarme réussi sur {device.name} via POST !")
+        except Exception as e:
+            try:
+                r_get = urllib.request.Request(target_url, method="GET")
+                urllib.request.urlopen(r_get, timeout=3, context=ctx)
+                print(f"[ALARM] Relais alarme réussi sur {device.name} via GET !")
+            except Exception as e2:
+                print(f"[ALARM] Relais vers {device.name} non joignable ({e2})")
+    except Exception as err:
+        print(f"[ALARM] Erreur trigger_device_alarm_internal: {err}")
+
 @router.post("/{device_id}/alarm")
 def control_device_alarm(
     device_id: str,
@@ -952,25 +980,8 @@ def control_device_alarm(
         raise HTTPException(status_code=403, detail="Accès non autorisé.")
 
     is_start = req.action.lower() == "start"
-    device.alarm_active = is_start
-    if is_start:
-        device.alarm_triggered_at = datetime.utcnow()
+    trigger_device_alarm_internal(device, duration_seconds=req.duration_seconds or 15, is_start=is_start)
     db.commit()
-
-    base_url = device.stream_url.rsplit('/', 1)[0] if '/' in device.stream_url else device.stream_url
-    target_url = f"{base_url}/alarm?action={req.action}&duration={req.duration_seconds or 15}"
-    ctx = ssl._create_unverified_context()
-    try:
-        r = urllib.request.Request(target_url, data=b"", method="POST")
-        urllib.request.urlopen(r, timeout=3, context=ctx)
-    except Exception as e:
-        print(f"[ALARM] Relais POST échoué: {e} -> Tentative en GET...")
-        try:
-            r_get = urllib.request.Request(target_url, method="GET")
-            urllib.request.urlopen(r_get, timeout=3, context=ctx)
-            print("[ALARM] Relais GET réussi vers le Raspberry Pi !")
-        except Exception as e2:
-            print(f"[ALARM] Relais GET échoué: {e2}")
 
     return {
         "status": "ok",

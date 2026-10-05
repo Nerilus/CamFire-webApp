@@ -6,7 +6,7 @@ from db.database import get_db
 from db.models import User, UserDevice
 from routers.auth import get_current_user
 from routers.devices import get_user_from_token_or_header
-from services.predict import process_image, generate_video_stream
+from services.predict import process_image, process_video, generate_video_stream
 
 from core.config import CAMERA_URL
 
@@ -65,12 +65,23 @@ async def predict_fire(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Seules les images sont supportées")
+    content_type = (file.content_type or "").lower()
+    filename = (file.filename or "").lower()
+    is_video = content_type.startswith("video/") or filename.endswith((".mp4", ".mov", ".avi", ".mkv", ".webm"))
+    is_image = content_type.startswith("image/") or filename.endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp"))
+
+    if not is_video and not is_image:
+        raise HTTPException(
+            status_code=400,
+            detail="Format non supporté. Veuillez importer une photo (JPEG, PNG) ou une vidéo (MP4, MOV)."
+        )
     
     try:
         contents = await file.read()
-        result = process_image(contents)
+        if is_video:
+            result = process_video(contents, user_id=current_user.id)
+        else:
+            result = process_image(contents, user_id=current_user.id, trigger_alerts=True)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'analyse : {str(e)}")

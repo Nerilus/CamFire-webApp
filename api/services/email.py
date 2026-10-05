@@ -567,3 +567,71 @@ Veuillez vérifier immédiatement la situation et contacter les services de seco
     send_email_async(subject, recipient, text_body, html_body, attachments=attachments)
 
 
+def send_person_detection_alert_email(
+    recipient: str,
+    device_name: str,
+    location: str,
+    confidence: float,
+    image_path: Optional[str] = None
+) -> None:
+    """
+    Envoie un e-mail d'alerte de sécurité immédiat lors de la détection d'une personne
+    avec le cliché photo HD instantané en pièce jointe.
+    """
+    now_str = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
+
+    print("=" * 60)
+    print(f"[ALERTE INTRUSION EMAIL] Envoi alerte personne à {recipient}")
+    print(f"  Appareil : {device_name} | Localisation : {location}")
+    print(f"  Confiance IA : {confidence:.1f}% | Photo : {image_path}")
+    print("=" * 60)
+
+    subject = f"[ALERTE SÉCURITÉ] Présence humaine détectée — CamFire ({device_name})"
+    text_body = f"""ALERTE DE SÉCURITÉ — PRÉSENCE HUMAINE DÉTECTÉE
+
+Le système de surveillance CamFire a détecté la présence d'une personne sur votre zone de surveillance.
+
+Détails de l'alerte :
+- Équipement : {device_name}
+- Localisation : {location}
+- Indice de confiance IA : {confidence:.1f}%
+- Date et heure : {now_str}
+
+Une capture photo instantanée est jointe à ce message pour vous permettre de vérifier l'identité de la personne ou l'intrusion.
+
+— Centre de Sécurité CamFire
+"""
+
+    rows = [
+        ("Type d'alerte", "Présence / Intrusion humaine"),
+        ("Équipement", device_name),
+        ("Localisation", location),
+        ("Confiance IA", f"{confidence:.1f}%"),
+        ("Horodatage", now_str),
+    ]
+
+    attachments = []
+    if image_path and os.path.exists(image_path):
+        attachments.append(image_path)
+
+    content = (
+        _detail_card(rows)
+        + """
+        <div style="margin-top:20px;padding:16px 18px;background:rgba(234,179,8,0.12);border:2px solid #eab308;border-radius:10px;color:#fef08a;font-size:14px;line-height:1.6;">
+            <strong>ATTENTION REQUISE :</strong><br>
+            Une silhouette humaine a été identifiée dans le champ de la caméra. Veuillez examiner la photo jointe pour vérifier s'il s'agit d'un membre autorisé ou d'une intrusion.
+        </div>
+        """
+    )
+
+    html_body = _email_base_template(
+        eyebrow="Alerte Sécurité — Présence Détectée",
+        title="PRÉSENCE HUMAINE DÉTECTÉE",
+        intro=f"Une détection de personne vient d'être signalée sur <strong>{escape(device_name)}</strong> :",
+        content=content,
+    )
+
+    send_email_async(subject, recipient, text_body, html_body, attachments=attachments)
+
+
+

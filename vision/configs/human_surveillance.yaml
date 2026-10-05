@@ -1,0 +1,22 @@
+# Configuration Ultralytics Dataset pour la Surveillance Humaine Avancée (CamFire)
+# Supporte les environnements extérieurs complexes (Météo, Nuit, Longue Distance)
+
+# Répertoire racine des données (chemin absolu pour éviter les conflits avec settings.json d'Ultralytics)
+path: /Users/herby/Herby/CamFire-webApp/vision/data/camfire_human_dataset
+train: images/train                 # Sous-répertoire train (relatif à 'path')
+val: images/val                     # Sous-répertoire val (relatif à 'path')
+test: images/test                   # Sous-répertoire test (optionnel)
+
+# Définition des classes
+names:
+  0: person
+
+# Métadonnées sur les sources intégrées dans le dataset
+metadata:
+  sources:
+    - WiderPerson (Distance & occlusion)
+    - TinyPerson (Très longue distance <32px)
+    - ExDark (Obscurité & basse lumière)
+    - DAWN (Brouillard, pluie, neige)
+    - RTTS (Brume & fumée d'incendie)
+  target_hardware: "Apple Silicon Mac M5 (MPS / ANE)"

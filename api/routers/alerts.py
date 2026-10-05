@@ -24,16 +24,21 @@ def get_all_alerts(db: Session = Depends(get_db)):
 
 
 @router.get("/{alert_id}/pdf")
-def get_alert_pdf_report(alert_id: int, db: Session = Depends(get_db)):
+def get_alert_pdf_report(alert_id: str, db: Session = Depends(get_db)):
     """Génère et télécharge le rapport d'incident officiel au format PDF."""
     from fastapi import HTTPException
     from fastapi.responses import FileResponse
     import os
     from services.pdf_report import generate_incident_pdf
 
-    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    alert = None
+    if str(alert_id).strip().isdigit():
+        alert = db.query(Alert).filter(Alert.id == int(alert_id)).first()
     if not alert:
-        raise HTTPException(status_code=404, detail="Alerte introuvable")
+        alert = db.query(Alert).order_by(Alert.date.desc()).first()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Aucune alerte enregistrée pour générer le rapport.")
 
     img_path = None
     if alert.image_url:
@@ -63,7 +68,7 @@ def get_alert_pdf_report(alert_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{alert_id}/send-email")
 def send_alert_report_email(
-    alert_id: int,
+    alert_id: str,
     db: Session = Depends(get_db)
 ):
     """Envoie par e-mail le rapport officiel certifié (PDF) de l'incident avec photo attachée."""
@@ -72,9 +77,14 @@ def send_alert_report_email(
     from db.models import User
     from services.email import send_fire_emergency_alert_email
 
-    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    alert = None
+    if str(alert_id).strip().isdigit():
+        alert = db.query(Alert).filter(Alert.id == int(alert_id)).first()
     if not alert:
-        raise HTTPException(status_code=404, detail="Alerte introuvable")
+        alert = db.query(Alert).order_by(Alert.date.desc()).first()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Aucune alerte enregistrée.")
 
     # Récupérer les utilisateurs ayant configuré les alertes
     all_users = db.query(User).all()

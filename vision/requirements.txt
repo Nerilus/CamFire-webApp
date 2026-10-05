@@ -1,0 +1,13 @@
+# Dépendances pour le pipeline Vision CamFire (Optimisé Mac M5 Apple Silicon)
+ultralytics>=8.3.0
+torch>=2.2.0
+torchvision>=0.17.0
+sahi>=0.11.18
+albumentations>=1.4.0
+opencv-python-headless>=4.9.0
+coremltools>=7.1
+pillow>=10.0.0
+numpy>=1.24.0,<2.0.0
+pyyaml>=6.0
+tqdm>=4.66.0
+requests>=2.31.0

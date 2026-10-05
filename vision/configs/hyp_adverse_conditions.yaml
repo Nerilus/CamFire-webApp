@@ -1,0 +1,34 @@
+# Hyperparamètres d'entraînement YOLO11 adaptés aux conditions extrêmes
+# Optimisé pour : Distance (Petits objets), Météo (Brouillard/Pluie/Fumée), Lumière (Nuit/Contre-jour)
+
+lr0: 0.01                # Taux d'apprentissage initial (SGD=1E-2, Adam=1E-3)
+lrf: 0.01                # Taux d'apprentissage final (lr0 * lrf)
+momentum: 0.937          # Momentum SGD / beta1 Adam
+weight_decay: 0.0005     # Décroissance des poids (régularisation L2)
+warmup_epochs: 3.0       # Époques de préchauffage
+warmup_momentum: 0.8     # Momentum pendant le préchauffage
+warmup_bias_lr: 0.1      # LR du biais pendant le préchauffage
+box: 7.5                 # Poids du gain de la perte de boîte (Bounding Box Loss)
+cls: 0.5                 # Poids du gain de la perte de classification
+dfl: 1.5                 # Poids du gain de la perte de distribution focale (DFL)
+
+# --- Augmentations Spécifiques Éclairage (Nuit, Pénombre, Contre-jour) ---
+hsv_h: 0.015             # Variation de teinte HSV (simule reflets colorés)
+hsv_s: 0.7               # Variation de saturation HSV (simule décoloration brouillard / fumée)
+hsv_v: 0.5               # Forte variation de luminosité HSV (simule pénombre, nuit et éblouissement)
+
+# --- Augmentations Géométriques & Distance (Petites Silhouettes Lointaines) ---
+degrees: 0.0             # Pas de rotation extrême pour préserver la verticalité des silhouettes
+translate: 0.1           # Translation de l'image (+/- 10%)
+scale: 0.7               # Facteur d'échelle d'image (permet de forcer des silhouettes minuscules)
+shear: 0.0               # Pas de cisaillement
+perspective: 0.0001      # Légère perspective pour simuler l'angle de caméra en hauteur
+flipud: 0.0              # Les humains ne marchent pas au plafond
+fliplr: 0.5              # Retournement horizontal (50% de probabilité)
+
+# --- Augmentations Complexes de Fusion d'Objets ---
+mosaic: 1.0              # Mosaïque 4 images (Crucial pour multiplier les petits objets et le contexte)
+mixup: 0.15              # Fusion de deux scènes (simule les silhouettes masquées par la brume ou fumée)
+copy_paste: 0.1          # Injection de silhouettes détourées pour densifier les exemples
+auto_augment: randaugment # Augmentation automatique complémentaire
+erasing: 0.4             # Effacement aléatoire de portions d'image (résistance aux occlusions derrière arbres)

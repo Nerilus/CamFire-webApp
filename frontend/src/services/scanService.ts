@@ -7,6 +7,9 @@ export interface ScanResult {
     class: string;
   }>;
   image_base64: string;
+  fire_detected?: boolean;
+  confidence?: number;
+  alert_triggered?: boolean;
 }
 
 export const scanService = {
@@ -15,7 +18,8 @@ export const scanService = {
     if (!token) throw new Error('Non authentifié. Veuillez vous reconnecter.');
 
     const formData = new FormData();
-    formData.append('file', fileOrBlob, 'scan.jpg');
+    const fileName = (fileOrBlob instanceof File) ? fileOrBlob.name : (fileOrBlob.type.startsWith('video/') ? 'scan.mp4' : 'scan.jpg');
+    formData.append('file', fileOrBlob, fileName);
 
     const response = await fetch(`${API_URL}/scan/predict`, {
       method: 'POST',

@@ -1,0 +1,21 @@
+# Ignore les environnements virtuels Python
+.venv/
+env/
+venv/
+
+# Ignore les téléchargements de données lourdes
+data/
+datasets/
+
+# Ignore les poids pré-entraînés et runs
+*.pt
+*.mlpackage
+runs/
+weights/
+
+# Fichiers temporaires
+*.jpg
+*.png
+__pycache__/
+*.pyc
+.DS_Store

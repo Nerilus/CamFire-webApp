@@ -6,6 +6,14 @@ import { captureService, type CaptureItem } from '../services/captureService';
 import { scanService } from '../services/scanService';
 import './Gallery.css';
 
+const ensureValidImageUrl = (url?: string | null): string | undefined => {
+  if (!url) return undefined;
+  if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
+    return url;
+  }
+  return `data:image/jpeg;base64,${url}`;
+};
+
 export const Gallery: React.FC = () => {
   const { items, addMedia, updateMediaStatus } = useMedia();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -21,7 +29,31 @@ export const Gallery: React.FC = () => {
   const [previewType, setPreviewType] = useState<'photo' | 'video' | null>(null);
   const [analysisData, setAnalysisData] = useState<{ fire_detected: boolean, confidence: number, gradcam_base64?: string | null } | null>(null);
   const [alreadyAnalyzed, setAlreadyAnalyzed] = useState(false);
-  const [alertImage, setAlertImage] = useState<{ url: string; confidence?: number; title?: string } | null>(null);
+  const [alertImage, setAlertImage] = useState<{ id?: number | string; url: string; confidence?: number; title?: string; isFire?: boolean } | null>(null);
+  const [alertBanner, setAlertBanner] = useState<string | null>(null);
+
+  const playAlarmSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      for (let i = 0; i < 3; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(950, now + i * 0.45);
+        gain.gain.setValueAtTime(0.25, now + i * 0.45);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.45 + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.45);
+        osc.stop(now + i * 0.45 + 0.35);
+      }
+    } catch (e) {
+      console.error('Audio play error:', e);
+    }
+  };
 
   const loadCaptures = async () => {
     try {
@@ -46,31 +78,19 @@ export const Gallery: React.FC = () => {
   const processFile = async (file: File) => {
     setSelectedFile(file);
     setPreviewType(file.type.startsWith('video') ? 'video' : 'photo');
-
-    const id = await hashFile(file);
-    const existing = items.find((m) => m.id === id);
-
-    if (existing) {
-      // Même contenu d'image déjà présent (quelle que soit la méthode d'import) :
-      // on réutilise son entrée sans la déplacer ni la dupliquer.
-      setPreviewUrl(existing.url);
-      setCurrentMediaId(existing.id);
-      if (existing.status !== 'pending') {
-        setAnalysisData({ fire_detected: existing.status === 'fire', confidence: existing.confidence ?? 0 });
-        setAlreadyAnalyzed(true);
-      } else {
-        setAnalysisData(null);
-        setAlreadyAnalyzed(false);
-      }
-      return;
-    }
-
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
+    setAlertBanner(null);
     setAnalysisData(null);
     setAlreadyAnalyzed(false);
+
+    const id = await hashFile(file);
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+
     const newId = addMedia(file.type.startsWith('video') ? 'video' : 'photo', url, file, id);
     setCurrentMediaId(newId);
+
+    // Analyse IA systématique dès l'importation de la photo ou vidéo
+    handleAnalyze(file, newId);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,6 +124,7 @@ export const Gallery: React.FC = () => {
     setPreviewType(null);
     setAnalysisData(null);
     setAlreadyAnalyzed(false);
+    setAlertBanner(null);
   };
 
   const extractFrameFromVideo = (file: File): Promise<Blob> => {
@@ -115,8 +136,7 @@ export const Gallery: React.FC = () => {
       video.playsInline = true;
       
       video.onloadeddata = () => {
-        // Avancer la vidéo à 1 seconde (ou au quart) pour éviter une image noire au tout début
-        video.currentTime = Math.min(1, video.duration * 0.25 || 0);
+        video.currentTime = Math.min(1.5, (video.duration || 1) * 0.3);
       };
       
       video.onseeked = () => {
@@ -143,37 +163,56 @@ export const Gallery: React.FC = () => {
     });
   };
 
-  const handleAnalyze = async () => {
-    const fileToAnalyze = selectedFile ?? items[0]?.file ?? null;
-    const mediaId = currentMediaId ?? items[0]?.id ?? null;
+  const handleAnalyze = async (overrideFile?: File | Blob, overrideMediaId?: string | null) => {
+    const fileToAnalyze = overrideFile ?? selectedFile ?? items[0]?.file ?? null;
+    const mediaId = overrideMediaId ?? currentMediaId ?? items[0]?.id ?? null;
     if (!fileToAnalyze) {
       alert("Veuillez d'abord importer une photo ou une vidéo !");
       return;
     }
     setAnalyzing(true);
+    setAlertBanner(null);
     try {
       let finalFile: Blob = fileToAnalyze;
-      
-      // Si c'est une vidéo, on extrait une image (frame) pour l'envoyer à l'IA
-      if (fileToAnalyze.type.startsWith('video/')) {
-        finalFile = await extractFrameFromVideo(fileToAnalyze as File);
+      let res;
+      try {
+        // Envoi direct du fichier au backend (supporte photo & vidéo complète multi-frames)
+        res = await scanService.predictImage(finalFile);
+      } catch (errBackend) {
+        // Fallback d'extraction d'image locale si nécessaire
+        if (fileToAnalyze.type.startsWith('video/')) {
+          const frameBlob = await extractFrameFromVideo(fileToAnalyze as File);
+          res = await scanService.predictImage(frameBlob);
+        } else {
+          throw errBackend;
+        }
       }
-      
-      const res = await scanService.predictImage(finalFile);
-      const hasFire = res.detections && res.detections.some((d: any) => d.class !== 'person');
+
+      const hasFire = Boolean(
+        res.fire_detected || 
+        (res.detections && res.detections.some((d: any) => d.class !== 'person'))
+      );
       const maxConf = (res.detections && res.detections.length > 0)
         ? Math.max(...res.detections.map((d: any) => d.confidence))
-        : 0;
+        : (res.confidence || 0);
 
-      setAnalysisData({ fire_detected: hasFire, confidence: maxConf, gradcam_base64: res.image_base64 });
+      const safeGradcam = ensureValidImageUrl(res.image_base64) || null;
+      setAnalysisData({ fire_detected: hasFire, confidence: maxConf, gradcam_base64: safeGradcam });
       setResult(hasFire);
       if (mediaId) updateMediaStatus(mediaId, hasFire ? 'fire' : 'safe', maxConf);
 
+      if (hasFire) {
+        playAlarmSound();
+        setAlertBanner(
+          "🚨 DÉPART DE FEU CONFIRMÉ ! L'e-mail officiel avec rapport PDF a été envoyé, l'alerte Discord avec photo a été transmise et la sirène a été déclenchée sur l'appareil."
+        );
+      }
+
       // Recharger les captures réelles enregistrées sur le serveur
       loadCaptures();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Erreur lors de l'analyse par l'IA");
+      alert(err.message || "Erreur lors de l'analyse par l'IA");
     } finally {
       setAnalyzing(false);
     }
@@ -213,6 +252,51 @@ export const Gallery: React.FC = () => {
         <h1 className="page-title">GALERIE DE SURVEILLANCE</h1>
       </div>
 
+      {alertBanner && (
+        <div 
+          style={{
+            background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(185, 28, 28, 0.45) 100%)',
+            border: '2px solid #ef4444',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            marginBottom: '20px',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            boxShadow: '0 0 25px rgba(239, 68, 68, 0.35)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <span style={{ fontSize: '26px' }}>🚨</span>
+            <div>
+              <strong style={{ fontSize: '15px', display: 'block', color: '#fca5a5', marginBottom: '2px' }}>
+                ALERTE INCENDIE VALIDÉE PAR L'IA
+              </strong>
+              <span style={{ fontSize: '13px', color: '#f8fafc', lineHeight: '1.4' }}>
+                {alertBanner}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setAlertBanner(null)}
+            style={{
+              background: 'rgba(255, 255, 255, 0.15)',
+              border: '1px solid rgba(255, 255, 255, 0.25)',
+              borderRadius: '6px',
+              padding: '6px 12px',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 600
+            }}
+          >
+            Fermer
+          </button>
+        </div>
+      )}
+
       <input
         ref={fileInputRef}
         type="file"
@@ -243,7 +327,7 @@ export const Gallery: React.FC = () => {
             {previewType === 'video' ? (
               <video src={previewUrl} muted playsInline autoPlay loop />
             ) : (
-              <img src={analysisData?.gradcam_base64 || previewUrl} alt="Aperçu" />
+              <img src={ensureValidImageUrl(analysisData?.gradcam_base64) || previewUrl || ''} alt="Aperçu" />
             )}
             {analyzing && (
               <div className="gallery-scan-overlay">
@@ -290,7 +374,7 @@ export const Gallery: React.FC = () => {
       {previewUrl && (
         <button 
           className="btn btn-flame gallery-analyze-btn" 
-          onClick={handleAnalyze} 
+          onClick={() => handleAnalyze()} 
           disabled={analyzing || !previewUrl || alreadyAnalyzed}
           style={{ marginBottom: '24px' }}
         >
@@ -405,9 +489,11 @@ export const Gallery: React.FC = () => {
                 className="gallery-card gallery-card-clickable"
                 key={c.id}
                 onClick={() => setAlertImage({ 
+                  id: c.id,
                   url: c.image_url, 
                   confidence: c.confidence, 
-                  title: `${badgeLabel} (${c.location || 'Site'})` 
+                  title: `${badgeLabel} (${c.location || 'Site'})`,
+                  isFire: isFire
                 })}
                 role="button"
                 tabIndex={0}
@@ -444,15 +530,15 @@ export const Gallery: React.FC = () => {
       {(result || alertImage) && (
         <FireAlertModal
           record={{
-            id: 'real-alert',
-            status: alertImage?.title?.includes('FEU') ? 'fire' : 'warn',
-            location: alertImage?.title || 'Surveillance CamFire - Détection IA',
+            id: alertImage?.id || 'latest',
+            status: (alertImage ? alertImage.isFire : analysisData?.fire_detected) ? 'fire' : 'warn',
+            location: alertImage?.title || (analysisData?.fire_detected ? 'Départ de Feu Détecté' : 'Surveillance CamFire - Détection IA'),
             date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
             coords: '46.2276°N 2.2137°E',
-            confidence: alertImage?.confidence ? Math.round(alertImage.confidence) : 90
+            confidence: alertImage?.confidence ? Math.round(alertImage.confidence) : (analysisData?.confidence ? Math.round(analysisData.confidence * 100) : 90)
           }}
           onClose={() => { setResult(false); setAlertImage(null); }}
-          imageUrl={(alertImage ? alertImage.url : analysisData?.gradcam_base64) || null}
+          imageUrl={ensureValidImageUrl((alertImage ? alertImage.url : analysisData?.gradcam_base64)) || null}
           confidence={alertImage?.confidence ? (alertImage.confidence > 1 ? alertImage.confidence / 100 : alertImage.confidence) : analysisData?.confidence}
         />
       )}

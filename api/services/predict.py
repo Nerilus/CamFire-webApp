@@ -10,7 +10,7 @@ import numpy as np
 import cv2
 import torch
 from PIL import Image
-from typing import Optional
+from typing import Optional, Dict, Any
 from ultralytics import YOLO
 from ultralytics.nn.tasks import DetectionModel
 from services.discord import send_discord_alert_sync
@@ -24,6 +24,7 @@ except Exception:
 MODEL_DIR = os.path.dirname(__file__)
 # Le modèle best.pt doit être placé dans le dossier 'api'
 MODEL_PATH = os.path.join(MODEL_DIR, "..", "best.pt")
+PERSON_MODEL_PATH = os.path.join(MODEL_DIR, "..", "person_best.pt")
 
 _model = None
 _person_model = None
@@ -33,7 +34,7 @@ def init_model():
     if _model is not None and _person_model is not None:
         return
     
-    print(f"Chargement du modèle YOLO depuis {MODEL_PATH}...")
+    print(f"Chargement du modèle YOLO Incendie depuis {MODEL_PATH}...")
     if not os.path.exists(MODEL_PATH):
         print(f"ATTENTION: Fichier {MODEL_PATH} introuvable.")
         return
@@ -47,25 +48,34 @@ def init_model():
         torch.load = custom_load
         
         _model = YOLO(MODEL_PATH)
-        _person_model = YOLO('yolo11n.pt')
+        
+        # Chargement du modèle Personne optimisé (person_best.pt en priorité, fallback yolo11n.pt)
+        if os.path.exists(PERSON_MODEL_PATH):
+            print(f"Chargement du modèle Personne haute précision depuis {PERSON_MODEL_PATH}...")
+            _person_model = YOLO(PERSON_MODEL_PATH)
+        else:
+            print("Chargement du modèle Personne par défaut (yolo11n.pt)...")
+            _person_model = YOLO('yolo11n.pt')
         
         torch.load = original_load
         print("Modèles YOLO chargés avec succès.")
     except Exception as e:
         print(f"Erreur lors du chargement du modèle YOLO: {e}")
 
-def process_image(image_bytes: bytes):
+def process_image(image_bytes: bytes, user_id: Optional[int] = None, device_id: Optional[int] = None, trigger_alerts: bool = True):
     if _model is None or _person_model is None:
         raise Exception("Les modèles YOLO n'ont pas pu être chargés. Assurez-vous d'avoir best.pt dans le dossier api.")
 
     # Lire l'image envoyée (OpenCV)
+    # Lire l'image envoyée (OpenCV) en conservant ses vraies couleurs
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    img = correct_noir_colors(img)
+    if img is None:
+        raise Exception("Impossible de décoder l'image fournie.")
     
     print("Analyse de l'image en cours par les modèles YOLO IA...")
-    # Lancer la prédiction avec un seuil de confiance calibré (0.35)
-    results_fire = _model.predict(source=img, conf=0.35, verbose=False)
+    # Lancer la prédiction avec un seuil de confiance calibré (0.15 pour détecter les fumées et feux lointains)
+    results_fire = _model.predict(source=img, conf=0.15, verbose=False)
     results_person = _person_model.predict(source=img, classes=[0], conf=0.35, verbose=False)
     
     # Image pour annotations
@@ -85,14 +95,14 @@ def process_image(image_bytes: bytes):
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(w, x2), min(h, y2)
             crop = img[y1:y2, x1:x2]
+            if crop is None or crop.size == 0 or crop.shape[0] < 4 or crop.shape[1] < 4:
+                continue
 
             conf = float(box.conf[0])
             cls_id = int(box.cls[0])
             class_name = _model.names[cls_id] if _model and hasattr(_model, 'names') else str(cls_id)
-            
-            # Filtre anti-faux-positifs sur blanc
-            if not validate_fire_or_smoke(crop, class_name, conf):
-                continue
+
+            print(f"[IA SCAN] Détection confirmée : {class_name} (Confiance : {int(conf * 100)}%)")
 
             is_fire = True
             if conf > max_fire_conf:
@@ -108,6 +118,41 @@ def process_image(image_bytes: bytes):
                 "confidence": round(conf, 4),
                 "class": class_name
             })
+
+    # Détection optique chromatique complémentaire pour les foyers de flammes vives (feux lointains)
+    if not is_fire:
+        try:
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            # Flammes vives : Hue 5-25 (Orange/Jaune), Saturation > 110, Valeur > 140
+            lower_flame = np.array([5, 110, 140], dtype=np.uint8)
+            upper_flame = np.array([28, 255, 255], dtype=np.uint8)
+            flame_mask = cv2.inRange(hsv, lower_flame, upper_flame)
+            
+            b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+            color_rule = (r > 150) & (g > 55) & (r > g * 1.1) & (g > b * 1.05)
+            flame_mask = (flame_mask > 0) & color_rule
+            flame_mask = flame_mask.astype(np.uint8) * 255
+
+            contours, _ = cv2.findContours(flame_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for c in contours:
+                area = cv2.contourArea(c)
+                if area >= 40:
+                    fx, fy, fw, fh = cv2.boundingRect(c)
+                    if fw >= 6 and fh >= 6:
+                        is_fire = True
+                        flame_conf = min(0.92, 0.65 + (area / 1500.0) * 0.1)
+                        if flame_conf > max_fire_conf:
+                            max_fire_conf = flame_conf
+                        cv2.rectangle(res_plotted, (fx, fy), (fx + fw, fy + fh), (0, 69, 255), 2)
+                        cv2.putText(res_plotted, f"Feu {int(flame_conf * 100)}%", (fx, max(15, fy - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 69, 255), 2)
+                        detections.append({
+                            "bbox": [float(fx), float(fy), float(fx + fw), float(fy + fh)],
+                            "confidence": round(flame_conf, 4),
+                            "class": "wildfire"
+                        })
+                        print(f"[OPTICAL SCAN] Foyer de flamme détecté par chrominance (Zone: {area}px)")
+        except Exception as e_opt:
+            print(f"Note détection optique: {e_opt}")
             
     # Détections du modèle Personnes
     if results_person[0].boxes is not None:
@@ -129,29 +174,172 @@ def process_image(image_bytes: bytes):
             })
             
     has_person = len(results_person[0].boxes) > 0 if results_person[0].boxes is not None else False
+
+    # Déclenchement de l'alerte incendie si feu/fumée détecté
+    if is_fire:
+        confidence_percent = round(max_fire_conf * 100, 1)
+        det_type = "fire" if any(d.get("class") == "wildfire" for d in detections) else "smoke"
+        det_label = "Départ de Feu" if det_type == "fire" else "Fumée"
+        print(f"[ALERTE {det_type.upper()}] Détection {det_label} (Scan Manuel | Confiance : {confidence_percent}%)")
+        if trigger_alerts:
+            save_capture_async(
+                detection_type=det_type,
+                status="fire",
+                confidence=confidence_percent,
+                location=f"Scan Manuel ({det_label})",
+                image_np=res_plotted,
+                user_id=user_id,
+                device_id=device_id
+            )
+
+    # Déclenchement de l'alerte personne si présence humaine détectée (même en cas de feu simultané)
     if has_person:
         max_p_conf = max([float(b.conf[0]) for b in results_person[0].boxes])
-        save_capture_async("person", "warn", round(max_p_conf * 100, 1), "Scan Manuel", res_plotted)
-    elif is_fire:
-        confidence_percent = round(max_fire_conf * 100, 1)
-        print(f"[ALERTE FUMÉE] Détection de fumée (Analyse Image | Confiance max : {confidence_percent}%)")
-        save_capture_async("smoke", "fire", confidence_percent, "Scan Manuel (Fumée)", res_plotted)
-    else:
-        print(f"[SURVEILLANCE] Surveillance normale (Aucune détection)")
+        print(f"[ALERTE PERSONNE] Détection silhouette humaine (Scan Manuel | Confiance : {round(max_p_conf * 100, 1)}%)")
+        if trigger_alerts:
+            save_capture_async("person", "warn", round(max_p_conf * 100, 1), "Scan Manuel", res_plotted, user_id=user_id, device_id=device_id)
+
+    if not is_fire and not has_person:
+        print("[SURVEILLANCE] Surveillance normale (Aucune anomalie détectée)")
     
     # Encoder l'image en JPEG
     success, encoded_img = cv2.imencode('.jpg', res_plotted)
     if not success:
         raise Exception("Erreur d'encodage de l'image")
     
-    # Convertir l'image en Base64
+    # Convertir l'image en Base64 Data URI valide (évite les erreurs HTTP 431 dans le navigateur)
     img_b64 = base64.b64encode(encoded_img.tobytes()).decode('utf-8')
+    data_uri = f"data:image/jpeg;base64,{img_b64}"
     
-    # Renvoyer le JSON avec les détections et l'image
+    # Renvoyer le JSON complet
     return {
         "detections": detections,
-        "image_base64": img_b64
+        "image_base64": data_uri,
+        "fire_detected": is_fire,
+        "person_detected": has_person,
+        "confidence": max_fire_conf if is_fire else (max_p_conf if has_person else 0.0),
+        "alert_triggered": (is_fire or has_person) and trigger_alerts
     }
+
+def process_video(video_bytes: bytes, user_id: Optional[int] = None, device_id: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Analyse séquentielle des frames d'une vidéo importée (MP4, MOV, etc.).
+    Détecte toute anomalie de feu ou fumée sur l'ensemble de la vidéo,
+    sélectionne le cliché avec la plus forte confiance et déclenche les alertes.
+    """
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp.write(video_bytes)
+        tmp_path = tmp.name
+
+    try:
+        cap = cv2.VideoCapture(tmp_path)
+        if not cap.isOpened():
+            raise Exception("Impossible de lire le fichier vidéo.")
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        duration_sec = total_frames / fps
+        print(f"[VIDEO SCAN] Vidéo reçue: {total_frames} frames, {fps:.1f} FPS, durée ~{duration_sec:.1f}s")
+
+        # Échantillonnage de 15 à 25 frames réparties sur toute la durée
+        num_samples = min(25, max(8, int(duration_sec * 2)))
+        step = max(1, total_frames // num_samples)
+
+        best_fire_match = None
+        max_fire_conf = -1.0
+        best_person_match = None
+        max_person_conf = -1.0
+        fallback_res = None
+        frame_idx = 0
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            if frame_idx % step == 0:
+                success, enc = cv2.imencode('.jpg', frame)
+                if success:
+                    res = process_image(enc.tobytes(), user_id=user_id, device_id=device_id, trigger_alerts=False)
+                    has_fire = res.get("fire_detected", False)
+                    conf = res.get("confidence", 0.0)
+
+                    if has_fire and conf > max_fire_conf:
+                        max_fire_conf = conf
+                        best_fire_match = (frame, res, conf)
+
+                    # Vérification présence de personne
+                    has_person = any(d.get("class") == "person" for d in res.get("detections", []))
+                    if has_person:
+                        p_confs = [d.get("confidence", 0.0) for d in res.get("detections", []) if d.get("class") == "person"]
+                        p_conf = max(p_confs) if p_confs else 0.0
+                        if p_conf > max_person_conf:
+                            max_person_conf = p_conf
+                            best_person_match = (frame, res, p_conf)
+
+                    if fallback_res is None or frame_idx >= total_frames // 2:
+                        fallback_res = res
+
+            frame_idx += 1
+
+        cap.release()
+
+        alert_sent = False
+        final_res = fallback_res
+
+        # Si du feu a été détecté sur l'une des frames de la vidéo
+        if best_fire_match:
+            frame, res, conf = best_fire_match
+            conf_percent = round(conf * 100, 1)
+            det_type = "fire" if any(d.get("class") == "wildfire" for d in res.get("detections", [])) else "smoke"
+            det_label = "Départ de Feu" if det_type == "fire" else "Fumée"
+            print(f"[VIDEO SCAN] ALERTE FEU VALIDÉE sur la vidéo (Confiance: {conf_percent}%)")
+
+            # Déclenchement de l'alerte complète (Capture + Email PDF + Discord + Sirène)
+            save_capture_async(
+                detection_type=det_type,
+                status="fire",
+                confidence=conf_percent,
+                location=f"Scan Vidéo ({det_label})",
+                image_np=frame,
+                user_id=user_id,
+                device_id=device_id
+            )
+            res["alert_triggered"] = True
+            alert_sent = True
+            final_res = res
+
+        # Si une personne a été détectée sur la vidéo (déclenché même si feu détecté)
+        if best_person_match:
+            p_frame, p_res, p_conf = best_person_match
+            conf_percent = round(p_conf * 100, 1)
+            print(f"[VIDEO SCAN] ALERTE PERSONNE VALIDÉE sur la vidéo (Confiance: {conf_percent}%)")
+            save_capture_async(
+                detection_type="person",
+                status="warn",
+                confidence=conf_percent,
+                location="Scan Vidéo (Personne)",
+                image_np=p_frame,
+                user_id=user_id,
+                device_id=device_id
+            )
+            if not final_res or not best_fire_match:
+                p_res["alert_triggered"] = True
+                final_res = p_res
+            alert_sent = True
+
+        if final_res:
+            final_res["alert_triggered"] = alert_sent
+            return final_res
+
+        raise Exception("Aucune frame exploitable extraite de la vidéo.")
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
 
 import httpx
 import time
@@ -251,11 +439,43 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                 db.commit()
                 print(f"[CAPTURE] Snapshot enregistrée: {filename} -> Type: {detection_type.upper()} ({confidence}%) à {location}")
                 
-                # Les notifications d'alarme sur Discord sont désactivées conformément au choix de l'utilisateur
-                # send_discord_alert_sync(alert_type_mapped, location, confidence, image_url)
-
-                # Notification E-mail d'Urgence Incendie (avec Rapport PDF officiel et photo snapshot)
+                # 1. Alerte Discord Immédiate avec Photo du Sinistre
                 if status == "fire":
+                    try:
+                        from services.discord import send_discord_alert_sync
+                        send_discord_alert_sync(
+                            alert_type="fire",
+                            location=dev_obj.name if dev_obj else location,
+                            confidence=confidence,
+                            image_url=image_url,
+                            image_path=filepath
+                        )
+                    except Exception as discord_err:
+                        print(f"[ALERTE DISCORD] Erreur envoi: {discord_err}")
+
+                    # 2. Déclenchement automatique de la Sirène d'Alarme sur l'appareil (Raspberry Pi)
+                    try:
+                        from routers.devices import trigger_device_alarm_internal
+                        devices_to_alarm = []
+                        if dev_obj:
+                            devices_to_alarm.append(dev_obj)
+                        if user_id:
+                            uds = db.query(UserDevice).filter(UserDevice.user_id == user_id).all()
+                            for ud in uds:
+                                if ud.device and ud.device not in devices_to_alarm:
+                                    devices_to_alarm.append(ud.device)
+                        if not devices_to_alarm:
+                            all_devs = db.query(Device).all()
+                            devices_to_alarm.extend(all_devs)
+
+                        for dev_item in devices_to_alarm:
+                            print(f"[ALERTE APPAREIL] Déclenchement de la sirène sur {dev_item.name}...")
+                            trigger_device_alarm_internal(dev_item, duration_seconds=15, is_start=True)
+                        db.commit()
+                    except Exception as alarm_err:
+                        print(f"[ALERTE APPAREIL] Erreur déclenchement alarme: {alarm_err}")
+
+                    # 3. Notification E-mail d'Urgence Incendie (avec Rapport PDF certifié et photo snapshot)
                     try:
                         from services.email import send_fire_emergency_alert_email
                         from db.models import User, UserDevice
@@ -306,8 +526,93 @@ def save_capture_async(detection_type: str, status: str, confidence: float, loca
                                             confidence=confidence,
                                             image_path=filepath
                                         )
+
+                        # Si aucune adresse trouvée, envoi de sécurité vers l'administrateur
+                        if not notified_emails:
+                            send_fire_emergency_alert_email(
+                                recipient="nerilus.h@gmail.com",
+                                device_name=dev_obj.name if dev_obj else location,
+                                location=location,
+                                confidence=confidence,
+                                image_path=filepath
+                            )
                     except Exception as email_err:
                         print(f"Erreur envoi alerte email urgence incendie: {email_err}")
+
+                # --- ALERTE PRÉSENCE HUMAINE / INTRUSION (PERSON) ---
+                elif status == "warn" or detection_type == "person":
+                    # 1. Alerte Discord Immédiate (Avertissement Présence Humaine)
+                    try:
+                        from services.discord import send_discord_alert_sync
+                        send_discord_alert_sync(
+                            alert_type="warn",
+                            location=dev_obj.name if dev_obj else location,
+                            confidence=confidence,
+                            image_url=image_url,
+                            image_path=filepath
+                        )
+                    except Exception as discord_err:
+                        print(f"[ALERTE DISCORD PERSONNE] Erreur envoi: {discord_err}")
+
+                    # 2. Notification E-mail Présence Humaine (avec photo snapshot jointe)
+                    try:
+                        from services.email import send_person_detection_alert_email
+                        from db.models import User, UserDevice
+                        target_users = []
+                        if user_id:
+                            u = db.query(User).filter(User.id == user_id).first()
+                            if u:
+                                target_users.append(u)
+
+                        target_dev_id = device_id or (dev_obj.id if dev_obj else None)
+                        if not target_dev_id:
+                            first_dev = db.query(Device).first()
+                            if first_dev:
+                                target_dev_id = first_dev.id
+
+                        if target_dev_id:
+                            uds = db.query(UserDevice).filter(UserDevice.device_id == target_dev_id).all()
+                            for ud in uds:
+                                if ud.user and ud.user not in target_users:
+                                    target_users.append(ud.user)
+
+                        if not target_users:
+                            all_users = db.query(User).filter(User.emergency_alerts_enabled == True).all()
+                            for u in all_users:
+                                if u not in target_users:
+                                    target_users.append(u)
+
+                        notified_emails = set()
+                        for u in target_users:
+                            if getattr(u, "emergency_alerts_enabled", True):
+                                raw_emails = u.emergency_alert_email or ""
+                                list_emails = [e.strip() for e in raw_emails.replace(";", ",").split(",") if e.strip()]
+                                if getattr(u, "email", None) and u.email.strip():
+                                    list_emails.append(u.email.strip())
+
+                                for em in list_emails:
+                                    if em.endswith("@gnail.com"):
+                                        em = em.replace("@gnail.com", "@gmail.com")
+                                    if em and "@" in em and em not in notified_emails:
+                                        notified_emails.add(em)
+                                        send_person_detection_alert_email(
+                                            recipient=em,
+                                            device_name=dev_obj.name if dev_obj else location,
+                                            location=location,
+                                            confidence=confidence,
+                                            image_path=filepath
+                                        )
+
+                        if not notified_emails:
+                            send_person_detection_alert_email(
+                                recipient="nerilus.h@gmail.com",
+                                device_name=dev_obj.name if dev_obj else location,
+                                location=location,
+                                confidence=confidence,
+                                image_path=filepath
+                            )
+                    except Exception as email_err:
+                        print(f"Erreur envoi alerte email personne: {email_err}")
             except Exception as dbe:
                 print(f"Erreur DB Capture: {dbe}")
             finally:
@@ -416,31 +721,21 @@ def validate_fire_or_smoke(crop, class_name: str, conf: float, person_boxes=None
 
         # Cas 1 : "wildfire" (flamme / feu)
         if class_name == "wildfire":
-            # Seuil de confiance plus strict pour éviter les faux positifs d'intérieur
-            if conf < 0.68:
+            if conf < 0.28:
                 return False
 
-            # Filtre anti-infrarouge NoIR / teintes violettes ou roses :
-            # Une vraie flamme a R > G et R >> B (jaune/orange/rouge).
-            # Le rose/magenta des caméras NoIR a beaucoup de bleu (B >= G ou B > R - 30).
-            if mean_b >= mean_g or mean_b > (mean_r - 25):
-                return False
-
-            # Dans l'espace HSV, la flamme doit être rouge/orange/jaune (Hue <= 26 ou Hue >= 170)
-            if 26 < mean_hue < 170:
-                return False
-
-            # La flamme a une luminosité et une saturation réelles
-            if mean_sat < 50 or mean_val < 100:
+            # Élimine uniquement les teintes purement bleues/vertes sans composante rouge
+            if mean_r < 25 and mean_b > 100:
                 return False
 
         # Cas 2 : "smoke" (fumée)
         if class_name == "smoke":
-            if conf < 0.55:
+            if conf < 0.28:
                 return False
+            # Élimine les reflets blancs plats de plafond d'intérieur uniquement si saturation quasi nulle et texture totalement lisse
             gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
             texture_std = float(np.std(gray))
-            if mean_val > 175 and mean_sat < 35 and texture_std < 18 and conf < 0.70:
+            if mean_val > 220 and mean_sat < 15 and texture_std < 8 and conf < 0.50:
                 return False
 
         return True
