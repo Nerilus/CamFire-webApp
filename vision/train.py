@@ -12,34 +12,53 @@ from pathlib import Path
 import torch
 from ultralytics import YOLO
 
+# ==============================================================================
+# 1. DÉTECTION DU MATÉRIEL (GPU vs CPU)
+# ==============================================================================
 def detect_best_device():
-    """Détecte l'environnement Apple Silicon ou CUDA/CPU."""
+    """
+    Sélectionne automatiquement le processeur le plus rapide disponible :
+    - MPS (Metal) : Utilise la puce graphique des Mac Apple Silicon (M1 à M5).
+    - CUDA : Utilise une carte graphique NVIDIA si disponible (ex: serveur Cloud).
+    - CPU : Solution de secours si aucun GPU n'est détecté.
+    """
     if torch.backends.mps.is_available():
         if torch.backends.mps.is_built():
-            print("[✓] Apple Silicon détecté : Accélération GPU Metal (MPS) ACTIVÉE.")
+            print(" Apple Silicon détecté : Accélération GPU Metal (MPS) ACTIVÉE.")
             return "mps"
     if torch.cuda.is_available():
-        print("[✓] GPU NVIDIA CUDA détecté.")
+        print("GPU NVIDIA CUDA détecté.")
         return "0"
-    print("[!] Aucun accélérateur matériel détecté. Utilisation du CPU.")
+    print("Aucun accélérateur matériel détecté. Utilisation du CPU.")
     return "cpu"
 
+# ==============================================================================
+# 2. CONFIGURATION SYSTÈME (Optimisation Mac)
+# ==============================================================================
 def configure_m5_environment():
-    """Applique les variables d'environnement optimales pour macOS Apple Silicon M5."""
+    """
+    Variables d'environnement pour stabiliser PyTorch sur Apple Silicon :
+    - FALLBACK : Si une opération mathématique n'existe pas sur Metal, bascule sur le CPU sans crasher.
+    - GRAPH_MODE : Fusionne les calculs pour accélérer l'exécution sur le GPU.
+    """
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
     os.environ["MPS_FORCE_GRAPH_MODE"] = "1"
 
+# ==============================================================================
+# 3. FONCTION PRINCIPALE D'ENTRAÎNEMENT
+# ==============================================================================
 def train(
-    model_name="yolo11m.pt",
-    data_config="configs/human_surveillance.yaml",
-    hyp_config="configs/hyp_adverse_conditions.yaml",
-    epochs=100,
-    batch_size=16,
-    img_size=1280,
-    project="runs/detect",
-    name="camfire_human_m5",
-    resume=False
+    model_name="yolo11m.pt",                       # Modèle de base pré-entraîné (YOLO11 Medium)
+    data_config="configs/human_surveillance.yaml", # Fichier YAML décrivant les chemins des images
+    hyp_config="configs/hyp_adverse_conditions.yaml", # Hyperparamètres météo (pluie, nuit, fumée)
+    epochs=100,                                   # Nombre total de passages sur tout le dataset
+    batch_size=16,                                # 16 images envoyées au GPU par étape de calcul
+    img_size=1280,                                # Résolution 1280px (4x plus de détails pour cibles lointaines)
+    project="runs/detect",                        # Dossier où enregistrer les résultats
+    name="camfire_human_m5",                      # Nom de l'expérience d'entraînement
+    resume=False                                  # True pour reprendre un entraînement interrompu
 ):
+    # Étape A : Préparation de l'environnement et détection du GPU
     configure_m5_environment()
     device = detect_best_device()
 
@@ -57,7 +76,7 @@ def train(
     print(f" Hyperparamètres : {hyp_path}")
     print("=" * 80)
 
-    # Vérification préalable de la présence du dataset
+    # Étape B : Vérification de sécurité (vérifie que les dossiers d'images existent et ne sont pas vides)
     import yaml
     with open(data_path, "r") as f:
         data_info = yaml.safe_load(f)
@@ -69,6 +88,7 @@ def train(
     valid_train = train_dir.exists() and any(train_dir.glob("*.*"))
     valid_val = val_dir.exists() and any(val_dir.glob("*.*"))
 
+    # Si le dataset est manquant, affiche un message d'aide clair plutôt que de crasher
     if not valid_train or not valid_val:
         print("\n" + "!" * 80)
         print(" ATTENTION : Le dossier d'entraînement est actuellement vide ou incomplet.")
@@ -83,10 +103,10 @@ def train(
         print("!" * 80 + "\n")
         sys.exit(1)
 
-    # Chargement du modèle Ultralytics
+    # Étape C : Chargement des poids du réseau de neurones YOLO11
     model = YOLO(model_name)
 
-    # Lancement de l'entraînement
+    # Étape D : Lancement de l'apprentissage (boucle de rétropropagation des gradients)
     results = model.train(
         data=str(data_path),
         cfg=str(hyp_path) if hyp_path.exists() else None,
@@ -94,25 +114,32 @@ def train(
         batch=batch_size,
         imgsz=img_size,
         device=device,
-        workers=4,           # Optimisé pour l'architecture M5 Unified Memory
+        workers=4,           # 4 processus parallèles (idéal pour la mémoire unifiée du Mac)
         project=project,
         name=name,
-        resume=resume,
+        resume=resume,       # Reprise automatique si interrompu
         save=True,
-        save_period=10,      # Sauvegarde automatique des checkpoints
-        val=True,
-        plots=True,
+        save_period=10,      # Sauvegarde de sécurité toutes les 10 époques (évite de tout perdre)
+        val=True,            # Calcule les métriques (mAP, Précision, Rappel) après chaque époque
+        plots=True,          # Génère les graphiques d'analyse (courbes de pertes, matrice de confusion)
         verbose=True
     )
 
+    # Étape E : Fin de l'entraînement et enregistrement du modèle final
     print("\n[✓] Entraînement terminé avec succès !")
     best_weights = Path(project) / name / "weights" / "best.pt"
     print(f"[✓] Meilleurs poids sauvegardés dans : {best_weights}")
     print("Prochaine étape : Export CoreML pour l'Apple Neural Engine (ANE) via :")
     print(f"  python3 export_coreml.py --weights {best_weights}")
 
+# ==============================================================================
+# 4. MODE DÉMO (Test rapide en 30 secondes pour le jury)
+# ==============================================================================
 def run_demo():
-    """Lance un entraînement démo de validation sur Mac M5 avec coco8."""
+    """
+    Lance un entraînement miniature sur 3 époques avec le dataset test coco8.
+    Permet de prouver au jury que le GPU Metal et le code fonctionnent en direct.
+    """
     configure_m5_environment()
     device = detect_best_device()
     print("=" * 80)
@@ -132,6 +159,9 @@ def run_demo():
     )
     print("\n[✓] Test de validation sur puce M5 réussi à 100% !")
 
+# ==============================================================================
+# 5. GESTION DES ARGUMENTS EN LIGNE DE COMMANDE (CLI)
+# ==============================================================================
 def main():
     parser = argparse.ArgumentParser(description="Entraînement Ultralytics YOLO11 sur Mac M5.")
     parser.add_argument("--model", type=str, default="yolo11m.pt", help="Modèle YOLO11 de départ (yolo11n, yolo11s, yolo11m).")
@@ -142,10 +172,12 @@ def main():
     parser.add_argument("--demo", action="store_true", help="Lancer un test rapide de 3 époques pour valider l'accélération M5.")
     args = parser.parse_args()
 
+    # Si l'utilisateur passe --demo, on exécute uniquement le test rapide
     if args.demo:
         run_demo()
         return
 
+    # Sinon, on lance l'entraînement complet avec les paramètres choisis
     train(
         model_name=args.model,
         epochs=args.epochs,
@@ -156,3 +188,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
